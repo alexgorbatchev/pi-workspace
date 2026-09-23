@@ -1,6 +1,8 @@
 {
   "@alexgorbatchev/pi-workspace": {
     "workspaces": {
+      "~/development/company-b/client-portal": ["./fixtures/workspaces/company-b/portal"],
+      "./fixtures/mock-repos/company-b/client-portal": ["./fixtures/workspaces/company-b/portal"],
       "~/development/tools/*": ["./fixtures/workspaces/tools/_common", "./fixtures/workspaces/tools/:1"]
     }
   }

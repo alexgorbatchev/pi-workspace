@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join, resolve, sep } from "node:path";
+import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import type {
   DirectoryReaderFn,
   FileExistsFn,
@@ -88,7 +88,8 @@ export function parseWorkspaceConfig(settings: unknown): IWorkspaceConfig | unde
 
 function normalizePathSegments(inputPath: string, homeDirectoryPath?: string): string[] {
   const expanded = expandHomeDirectory(inputPath, homeDirectoryPath);
-  return expanded.split(/[/\\]+/).filter((segment) => segment.length > 0 && segment !== ".");
+  const resolved = isAbsolute(expanded) ? expanded : resolve(expanded);
+  return resolved.split(/[/\\]+/).filter((segment) => segment.length > 0 && segment !== ".");
 }
 
 export function matchWorkspacePattern(

@@ -113,6 +113,18 @@ Configure the extension in `~/.pi/agent/settings.json` under the `"@alexgorbatch
 
 Each key is a path pattern supporting `~` expansion and `*` or `:name` wildcards. Each value is an array of directory paths (or single string path) supporting `:1`, `:2` (or `$1`, `$2`) and `:name` replacements.
 
+# Local Testing
+
+Test the extension locally against checked-in fixtures representing both mapping styles:
+
+```bash
+# 1. Test wildcard multi-layer mapping (~/development/tools/* -> _common + :1)
+bun run test:local
+
+# 2. Test exact path mapping (~/development/company-b/client-portal -> portal)
+bun run test:local portal
+```
+
 # License
 
 [MIT](LICENSE)
