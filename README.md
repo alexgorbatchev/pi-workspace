@@ -78,8 +78,18 @@ Pi displays the attributed workspace summary:
   base: ~/development
   organization: example.com (~/.pi/agent/workspaces/example.com/_common)
     prompt: APPEND_SYSTEM.md
+    skills:
+      - example-auth
+    commands:
+      - /org-audit
+    extensions:
+      - telemetry.ts
   project: auth-service (~/.pi/agent/workspaces/example.com/auth-service)
     prompt: APPEND_SYSTEM.md
+    skills:
+      - auth-tester
+    commands:
+      - /proj-check
 ```
 
 # Configuration

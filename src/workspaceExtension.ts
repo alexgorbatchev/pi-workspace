@@ -79,8 +79,12 @@ function formatAssetList(theme: IThemeFormatter, label: string, items: readonly 
   if (items.length === 0) {
     return "";
   }
-  const formattedItems = items.join(", ");
-  return theme.fg("accent", `    ${label}: `) + theme.fg("dim", `${items.length} (${formattedItems})`) + "\n";
+  const sortedItems = [...items].sort((firstItem, secondItem) => firstItem.localeCompare(secondItem));
+  let result = theme.fg("accent", `    ${label}:`) + "\n";
+  for (const item of sortedItems) {
+    result += theme.fg("dim", `      - ${item}`) + "\n";
+  }
+  return result;
 }
 
 function formatTierSection(

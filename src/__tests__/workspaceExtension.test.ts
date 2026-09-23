@@ -54,7 +54,7 @@ describe("workspaceExtension", () => {
       fg: (_color: string, text: string) => text,
     };
 
-    it("formats full workspace status report with attribution by tier", () => {
+    it("formats full workspace status report with attribution by tier and sorted sub-bullets", () => {
       const report = formatWorkspaceReport(
         mockTheme,
         {
@@ -65,14 +65,14 @@ describe("workspaceExtension", () => {
             directoryPath: "/home/.pi/agent/workspaces/example.com/_common",
             promptFileName: "APPEND_SYSTEM.md",
             skillNames: ["example-auth"],
-            promptNames: ["/org-audit"],
+            promptNames: ["/org-audit", "/jira-check"],
             extensionFileNames: ["telemetry.ts"],
           },
           project: {
             name: "auth-service",
             directoryPath: "/home/.pi/agent/workspaces/example.com/auth-service",
             promptFileName: "APPEND_SYSTEM.md",
-            skillNames: ["auth-check"],
+            skillNames: ["beta-skill", "alpha-skill"],
             promptNames: ["/proj-check"],
             extensionFileNames: [],
           },
@@ -85,12 +85,12 @@ describe("workspaceExtension", () => {
       expect(report).toContain("base: ~/development");
       expect(report).toContain("organization: example.com (~/.pi/agent/workspaces/example.com/_common)");
       expect(report).toContain("prompt: APPEND_SYSTEM.md");
-      expect(report).toContain("skills: 1 (example-auth)");
-      expect(report).toContain("commands: 1 (/org-audit)");
-      expect(report).toContain("extensions: 1 (telemetry.ts)");
+      expect(report).toContain("    skills:\n      - example-auth");
+      expect(report).toContain("    commands:\n      - /jira-check\n      - /org-audit");
+      expect(report).toContain("    extensions:\n      - telemetry.ts");
       expect(report).toContain("project: auth-service (~/.pi/agent/workspaces/example.com/auth-service)");
-      expect(report).toContain("skills: 1 (auth-check)");
-      expect(report).toContain("commands: 1 (/proj-check)");
+      expect(report).toContain("    skills:\n      - alpha-skill\n      - beta-skill");
+      expect(report).toContain("    commands:\n      - /proj-check");
     });
 
     it("formats minimal report without org or assets", () => {
