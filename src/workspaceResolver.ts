@@ -1,29 +1,31 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join, normalize, relative, resolve, sep } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import type {
   DirectoryReaderFn,
   FileExistsFn,
   FileReaderFn,
   IWorkspaceConfig,
-  IWorkspaceDirectories,
+  IWorkspaceDirectoryAssets,
   IWorkspaceResourcePaths,
   IWorkspaceSettings,
-  IWorkspaceTierAssets,
+  WorkspaceMappings,
 } from "./types.js";
 
 export const CONFIG_KEY = "@alexgorbatchev/pi-workspace";
-
-export const DEFAULT_WORKSPACES_ROOT = "~/.pi/agent/workspaces";
-export const DEFAULT_BASE_DIR = "~/development";
 
 export const PROMPT_FILE_NAMES = ["APPEND_SYSTEM.md", "SYSTEM.md", "AGENTS.md", "CLAUDE.md"] as const;
 
 export interface IWorkspaceResolverOptions {
   readonly config?: IWorkspaceConfig | undefined;
-  readonly env?: Record<string, string | undefined> | undefined;
   readonly homeDirectoryPath?: string | undefined;
   readonly fileExists?: FileExistsFn | undefined;
+}
+
+export interface IPatternMatch {
+  readonly isMatch: boolean;
+  readonly captures: readonly string[];
+  readonly namedCaptures: Record<string, string>;
 }
 
 export function expandHomeDirectory(filePath: string, homeDirectoryPath: string = homedir()): string {
@@ -47,22 +49,6 @@ export function collapseHomeDirectory(filePath: string, homeDirectoryPath: strin
   return filePath;
 }
 
-export function resolveWorkspacesRoot(options?: IWorkspaceResolverOptions): string {
-  const envValue = options?.env !== undefined ? options.env.PI_WORKSPACES_ROOT : process.env.PI_WORKSPACES_ROOT;
-  const configValue = options?.config?.workspacesRoot;
-  const rawPath = envValue ?? configValue ?? DEFAULT_WORKSPACES_ROOT;
-  const expandedPath = expandHomeDirectory(rawPath, options?.homeDirectoryPath);
-  return resolve(expandedPath);
-}
-
-export function resolveBaseDir(options?: IWorkspaceResolverOptions): string {
-  const envValue = options?.env !== undefined ? options.env.PI_WORKSPACE_BASE_DIR : process.env.PI_WORKSPACE_BASE_DIR;
-  const configValue = options?.config?.baseDir;
-  const rawPath = envValue ?? configValue ?? DEFAULT_BASE_DIR;
-  const expandedPath = expandHomeDirectory(rawPath, options?.homeDirectoryPath);
-  return resolve(expandedPath);
-}
-
 export function parseWorkspaceConfig(settings: unknown): IWorkspaceConfig | undefined {
   if (typeof settings !== "object" || settings === null) {
     return undefined;
@@ -73,124 +59,138 @@ export function parseWorkspaceConfig(settings: unknown): IWorkspaceConfig | unde
     return undefined;
   }
 
-  let workspacesRoot: string | undefined;
-  const rawWorkspacesRoot = Reflect.get(rawConfig, "workspacesRoot");
-  if (typeof rawWorkspacesRoot === "string" && rawWorkspacesRoot.trim().length > 0) {
-    workspacesRoot = rawWorkspacesRoot.trim();
-  }
-
-  let baseDir: string | undefined;
-  const rawBaseDir = Reflect.get(rawConfig, "baseDir");
-  if (typeof rawBaseDir === "string" && rawBaseDir.trim().length > 0) {
-    baseDir = rawBaseDir.trim();
-  }
-
-  let mappings: Record<string, string> | undefined;
-  const rawMappings = Reflect.get(rawConfig, "mappings");
-  if (typeof rawMappings === "object" && rawMappings !== null && !Array.isArray(rawMappings)) {
-    const validMappings: Record<string, string> = {};
-    for (const [key, value] of Object.entries(rawMappings)) {
-      if (typeof value === "string" && value.trim().length > 0) {
-        validMappings[key] = value.trim();
-      }
-    }
-    if (Object.keys(validMappings).length > 0) {
-      mappings = validMappings;
-    }
-  }
-
-  if (workspacesRoot === undefined && baseDir === undefined && mappings === undefined) {
+  const rawWorkspaces = Reflect.get(rawConfig, "workspaces");
+  if (typeof rawWorkspaces !== "object" || rawWorkspaces === null || Array.isArray(rawWorkspaces)) {
     return undefined;
   }
 
+  const workspaces: WorkspaceMappings = {};
+  for (const [pattern, target] of Object.entries(rawWorkspaces)) {
+    if (typeof target === "string" && target.trim().length > 0) {
+      workspaces[pattern.trim()] = target.trim();
+    } else if (Array.isArray(target)) {
+      const validTargets = target
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+      if (validTargets.length > 0) {
+        workspaces[pattern.trim()] = validTargets;
+      }
+    }
+  }
+
+  if (Object.keys(workspaces).length === 0) {
+    return undefined;
+  }
+
+  return { workspaces };
+}
+
+function normalizePathSegments(inputPath: string, homeDirectoryPath?: string): string[] {
+  const expanded = expandHomeDirectory(inputPath, homeDirectoryPath);
+  return expanded.split(/[/\\]+/).filter((segment) => segment.length > 0 && segment !== ".");
+}
+
+export function matchWorkspacePattern(
+  pattern: string,
+  targetDirectory: string,
+  homeDirectoryPath?: string,
+): IPatternMatch {
+  const patternSegments = normalizePathSegments(pattern, homeDirectoryPath);
+  const targetSegments = normalizePathSegments(targetDirectory, homeDirectoryPath);
+
+  if (targetSegments.length < patternSegments.length) {
+    return { isMatch: false, captures: [], namedCaptures: {} };
+  }
+
+  const captures: string[] = [];
+  const namedCaptures: Record<string, string> = {};
+
+  for (let i = 0; i < patternSegments.length; i++) {
+    const patternSegment = patternSegments[i] ?? "";
+    const targetSegment = targetSegments[i] ?? "";
+
+    if (patternSegment === "*") {
+      captures.push(targetSegment);
+    } else if (patternSegment.startsWith(":") && patternSegment.length > 1) {
+      const paramName = patternSegment.slice(1);
+      captures.push(targetSegment);
+      namedCaptures[paramName] = targetSegment;
+    } else if (patternSegment.toLowerCase() !== targetSegment.toLowerCase()) {
+      return { isMatch: false, captures: [], namedCaptures: {} };
+    }
+  }
+
   return {
-    ...(workspacesRoot !== undefined ? { workspacesRoot } : {}),
-    ...(baseDir !== undefined ? { baseDir } : {}),
-    ...(mappings !== undefined ? { mappings } : {}),
+    isMatch: true,
+    captures,
+    namedCaptures,
   };
 }
 
-function resolveOrgDirectoryPath(workspacesRootPath: string, orgName: string, checkFileExists: FileExistsFn): string {
-  const primaryCommonPath = join(workspacesRootPath, orgName, "_common");
-  if (checkFileExists(primaryCommonPath)) {
-    return primaryCommonPath;
+export function interpolateTargetTemplate(template: string, match: IPatternMatch): string {
+  let result = template;
+
+  for (let i = 0; i < match.captures.length; i++) {
+    const captureValue = match.captures[i] ?? "";
+    const numericPlaceholder = `:${i + 1}`;
+    const dollarPlaceholder = `$${i + 1}`;
+    result = result.replaceAll(numericPlaceholder, captureValue).replaceAll(dollarPlaceholder, captureValue);
   }
 
-  const secondaryCommonPath = join(workspacesRootPath, orgName, "common");
-  if (checkFileExists(secondaryCommonPath)) {
-    return secondaryCommonPath;
+  for (const [name, value] of Object.entries(match.namedCaptures)) {
+    result = result.replaceAll(`:${name}`, value);
   }
 
-  const directOrgPath = join(workspacesRootPath, orgName);
-  if (checkFileExists(directOrgPath)) {
-    return directOrgPath;
-  }
+  return result;
+}
 
-  return primaryCommonPath;
+function sortPatternsBySpecificity(patterns: readonly string[]): string[] {
+  return [...patterns].sort((firstPattern, secondPattern) => {
+    const firstHasWildcard = firstPattern.includes("*") || firstPattern.includes(":");
+    const secondHasWildcard = secondPattern.includes("*") || secondPattern.includes(":");
+
+    if (!firstHasWildcard && secondHasWildcard) return -1;
+    if (firstHasWildcard && !secondHasWildcard) return 1;
+
+    return secondPattern.length - firstPattern.length;
+  });
 }
 
 export function resolveWorkspaceDirectories(
   currentWorkingDirectory: string,
   options?: IWorkspaceResolverOptions,
-): IWorkspaceDirectories {
+): string[] {
+  const workspacesConfig = options?.config?.workspaces;
+  if (!workspacesConfig || Object.keys(workspacesConfig).length === 0) {
+    return [];
+  }
+
   const checkFileExists = options?.fileExists ?? existsSync;
-  const workspacesRootPath = resolveWorkspacesRoot(options);
-  const baseDirectoryPath = resolveBaseDir(options);
-  const resolvedCurrentDirectory = resolve(currentWorkingDirectory);
+  const sortedPatterns = sortPatternsBySpecificity(Object.keys(workspacesConfig));
 
-  const mappings = options?.config?.mappings ?? {};
-  for (const [mappedSourcePath, targetRelativePath] of Object.entries(mappings)) {
-    const resolvedMappedPath = resolve(expandHomeDirectory(mappedSourcePath, options?.homeDirectoryPath));
-    if (resolvedCurrentDirectory === resolvedMappedPath) {
-      const parts = normalize(targetRelativePath)
-        .split(/[/\\]+/)
-        .filter((part) => part.length > 0);
-      if (parts.length >= 2) {
-        const orgName = parts[0] ?? "";
-        const projectName = parts.slice(1).join("/");
-        const orgDirectory = resolveOrgDirectoryPath(workspacesRootPath, orgName, checkFileExists);
-        const projectDirectory = join(workspacesRootPath, orgName, projectName);
-        return { orgDirectory, projectDirectory, orgName, projectName };
+  for (const pattern of sortedPatterns) {
+    const match = matchWorkspacePattern(pattern, currentWorkingDirectory, options?.homeDirectoryPath);
+    if (match.isMatch) {
+      const rawTargets = workspacesConfig[pattern];
+      const targetTemplates = Array.isArray(rawTargets) ? rawTargets : rawTargets ? [rawTargets] : [];
+
+      const resolvedDirectories: string[] = [];
+      for (const template of targetTemplates) {
+        const interpolated = interpolateTargetTemplate(template, match);
+        const expanded = expandHomeDirectory(interpolated, options?.homeDirectoryPath);
+        const resolvedPath = resolve(expanded);
+
+        if (checkFileExists(resolvedPath) && !resolvedDirectories.includes(resolvedPath)) {
+          resolvedDirectories.push(resolvedPath);
+        }
       }
-      if (parts.length === 1) {
-        const projectName = parts[0] ?? "";
-        const projectDirectory = join(workspacesRootPath, projectName);
-        return { projectDirectory, projectName };
-      }
+
+      return resolvedDirectories;
     }
   }
 
-  const isUnderBaseDirectory =
-    resolvedCurrentDirectory === baseDirectoryPath ||
-    resolvedCurrentDirectory.startsWith(
-      baseDirectoryPath.endsWith(sep) ? baseDirectoryPath : `${baseDirectoryPath}${sep}`,
-    );
-
-  if (isUnderBaseDirectory && resolvedCurrentDirectory !== baseDirectoryPath) {
-    const relativePath = relative(baseDirectoryPath, resolvedCurrentDirectory);
-    const parts = relativePath.split(sep).filter((part) => part.length > 0);
-
-    if (parts.length >= 2) {
-      const orgName = parts[0] ?? "";
-      const projectName = parts.slice(1).join("/");
-      const orgDirectory = resolveOrgDirectoryPath(workspacesRootPath, orgName, checkFileExists);
-      const projectDirectory = join(workspacesRootPath, orgName, projectName);
-      return { orgDirectory, projectDirectory, orgName, projectName };
-    }
-
-    if (parts.length === 1) {
-      const projectName = parts[0] ?? "";
-      const projectDirectory = join(workspacesRootPath, projectName);
-      return { projectDirectory, projectName };
-    }
-  }
-
-  const fallbackProjectName = basename(resolvedCurrentDirectory);
-  const fallbackProjectDirectory = join(workspacesRootPath, fallbackProjectName);
-  return {
-    projectDirectory: fallbackProjectDirectory,
-    projectName: fallbackProjectName,
-  };
+  return [];
 }
 
 export function findPromptFile(directoryPath: string, checkFileExists: FileExistsFn = existsSync): string | null {
@@ -280,12 +280,11 @@ export function readSettingsFile(
   }
 }
 
-export function getTierAssets(
-  name: string,
+export function getDirectoryAssets(
   directoryPath: string,
   checkFileExists: FileExistsFn = existsSync,
   directoryReader: DirectoryReaderFn = (dirPath) => readdirSync(dirPath),
-): IWorkspaceTierAssets {
+): IWorkspaceDirectoryAssets {
   const promptPath = findPromptFile(directoryPath, checkFileExists);
   const promptFileName = promptPath ? basename(promptPath) : undefined;
 
@@ -304,7 +303,7 @@ export function getTierAssets(
         }
       }
     } catch {
-      // Ignore unreadable skills directories
+      // Ignore unreadable skills directory
     }
   }
 
@@ -322,7 +321,7 @@ export function getTierAssets(
         }
       }
     } catch {
-      // Ignore unreadable prompts directories
+      // Ignore unreadable prompts directory
     }
   }
 
@@ -342,12 +341,11 @@ export function getTierAssets(
         }
       }
     } catch {
-      // Ignore unreadable extensions directories
+      // Ignore unreadable extensions directory
     }
   }
 
   return {
-    name,
     directoryPath,
     ...(promptFileName !== undefined ? { promptFileName } : {}),
     skillNames,
@@ -357,7 +355,7 @@ export function getTierAssets(
 }
 
 export function getWorkspaceResourcePaths(
-  directories: IWorkspaceDirectories,
+  directories: readonly string[],
   checkFileExists: FileExistsFn = existsSync,
   directoryReader: DirectoryReaderFn = (dirPath) => readdirSync(dirPath),
 ): IWorkspaceResourcePaths {
@@ -365,15 +363,7 @@ export function getWorkspaceResourcePaths(
   const promptPaths: string[] = [];
   const extensionPaths: string[] = [];
 
-  const directoryOrder: string[] = [];
-  if (directories.projectDirectory) {
-    directoryOrder.push(directories.projectDirectory);
-  }
-  if (directories.orgDirectory && directories.orgDirectory !== directories.projectDirectory) {
-    directoryOrder.push(directories.orgDirectory);
-  }
-
-  for (const directoryPath of directoryOrder) {
+  for (const directoryPath of directories) {
     const skillsSubdirectory = join(directoryPath, "skills");
     if (checkFileExists(skillsSubdirectory) && !skillPaths.includes(skillsSubdirectory)) {
       skillPaths.push(skillsSubdirectory);
@@ -383,18 +373,7 @@ export function getWorkspaceResourcePaths(
     if (checkFileExists(promptsSubdirectory) && !promptPaths.includes(promptsSubdirectory)) {
       promptPaths.push(promptsSubdirectory);
     }
-  }
 
-  // Extensions load order: org first, then project overrides
-  const extensionDirectoryOrder: string[] = [];
-  if (directories.orgDirectory) {
-    extensionDirectoryOrder.push(directories.orgDirectory);
-  }
-  if (directories.projectDirectory && directories.projectDirectory !== directories.orgDirectory) {
-    extensionDirectoryOrder.push(directories.projectDirectory);
-  }
-
-  for (const directoryPath of extensionDirectoryOrder) {
     const extensionsSubdirectory = join(directoryPath, "extensions");
     if (checkFileExists(extensionsSubdirectory)) {
       try {

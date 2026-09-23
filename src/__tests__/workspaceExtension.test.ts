@@ -13,14 +13,11 @@ import {
 describe("workspaceExtension", () => {
   describe("buildSystemPromptAppend", () => {
     it("returns empty string when no prompt files exist", () => {
-      const result = buildSystemPromptAppend({
-        orgDirectory: "/nonexistent/org",
-        projectDirectory: "/nonexistent/proj",
-      });
+      const result = buildSystemPromptAppend(["/nonexistent/org", "/nonexistent/proj"]);
       expect(result).toBe("");
     });
 
-    it("layers org instructions and project instructions", () => {
+    it("appends prompt files verbatim in layer order without synthetic headers", () => {
       const testDir = join(tmpdir(), `pi-ws-test-${Date.now()}`);
       const orgDir = join(testDir, "org");
       const projDir = join(testDir, "proj");
@@ -28,21 +25,17 @@ describe("workspaceExtension", () => {
       mkdirSync(orgDir, { recursive: true });
       mkdirSync(projDir, { recursive: true });
 
-      writeFileSync(join(orgDir, "APPEND_SYSTEM.md"), "Follow company security standards.");
-      writeFileSync(join(projDir, "APPEND_SYSTEM.md"), "Run npm test before committing.");
+      writeFileSync(join(orgDir, "APPEND_SYSTEM.md"), "# Company Standards\nFollow security rules.");
+      writeFileSync(join(projDir, "APPEND_SYSTEM.md"), "# Project Standards\nRun tests before commit.");
 
       try {
-        const result = buildSystemPromptAppend({
-          orgName: "example.com",
-          orgDirectory: orgDir,
-          projectName: "auth-service",
-          projectDirectory: projDir,
-        });
+        const result = buildSystemPromptAppend([orgDir, projDir]);
 
-        expect(result).toContain("# example.com Organization Instructions");
-        expect(result).toContain("Follow company security standards.");
-        expect(result).toContain("# auth-service Project Instructions");
-        expect(result).toContain("Run npm test before committing.");
+        expect(result).toBe(
+          "\n\n# Company Standards\nFollow security rules.\n\n# Project Standards\nRun tests before commit.",
+        );
+        expect(result).not.toContain("Organization Instructions");
+        expect(result).not.toContain("Project Instructions");
       } finally {
         rmSync(testDir, { recursive: true, force: true });
       }
@@ -58,62 +51,61 @@ describe("workspaceExtension", () => {
       const report = formatWorkspaceReport(
         mockTheme,
         {
-          workspacesRoot: "/home/.pi/agent/workspaces",
-          baseDir: "/home/development",
-          org: {
-            name: "example.com",
-            directoryPath: "/home/.pi/agent/workspaces/example.com/_common",
-            promptFileName: "APPEND_SYSTEM.md",
-            skillNames: ["example-auth"],
-            promptNames: ["org-audit", "jira-check"],
-            extensionFileNames: ["telemetry.ts"],
-          },
-          project: {
-            name: "auth-service",
-            directoryPath: "/home/.pi/agent/workspaces/example.com/auth-service",
-            promptFileName: "APPEND_SYSTEM.md",
-            skillNames: ["beta-skill", "alpha-skill"],
-            promptNames: ["proj-check"],
-            extensionFileNames: [],
-          },
+          workspaces: [
+            {
+              directoryPath: "/home/.pi/workspaces/company-a/_common",
+              promptFileName: "APPEND_SYSTEM.md",
+              skillNames: ["company-auth"],
+              promptNames: ["org-audit", "jira-check"],
+              extensionFileNames: ["telemetry.ts"],
+            },
+            {
+              directoryPath: "/home/.pi/workspaces/company-a/auth-service",
+              promptFileName: "APPEND_SYSTEM.md",
+              skillNames: ["beta-skill", "alpha-skill"],
+              promptNames: ["proj-check"],
+              extensionFileNames: [],
+            },
+          ],
         },
         "/home",
       );
 
       expect(report).toContain("[@alexgorbatchev/pi-workspace]");
-      expect(report).toContain("root: ~/.pi/agent/workspaces");
-      expect(report).toContain("base: ~/development");
-      expect(report).toContain("organization: ~/.pi/agent/workspaces/example.com/_common");
-      expect(report).toContain("prompt: APPEND_SYSTEM.md");
-      expect(report).toContain("    skills:\n      - example-auth");
+      expect(report).toContain("workspace: ~/.pi/workspaces/company-a/_common");
+      expect(report).toContain("    prompt: APPEND_SYSTEM.md");
+      expect(report).toContain("    skills:\n      - company-auth");
       expect(report).toContain("    commands:\n      - jira-check\n      - org-audit");
       expect(report).toContain("    extensions:\n      - telemetry.ts");
-      expect(report).toContain("project: ~/.pi/agent/workspaces/example.com/auth-service");
+      expect(report).toContain("workspace: ~/.pi/workspaces/company-a/auth-service");
       expect(report).toContain("    skills:\n      - alpha-skill\n      - beta-skill");
       expect(report).toContain("    commands:\n      - proj-check");
     });
 
-    it("formats minimal report without org or assets", () => {
+    it("formats minimal report without assets", () => {
       const report = formatWorkspaceReport(
         mockTheme,
         {
-          workspacesRoot: "/home/.pi/agent/workspaces",
-          baseDir: "/home/development",
-          project: {
-            name: "solo-tool",
-            directoryPath: "/home/.pi/agent/workspaces/solo-tool",
-            skillNames: [],
-            promptNames: [],
-            extensionFileNames: [],
-          },
+          workspaces: [
+            {
+              directoryPath: "/home/.pi/workspaces/company-b/portal",
+              skillNames: [],
+              promptNames: [],
+              extensionFileNames: [],
+            },
+          ],
         },
         "/home",
       );
 
       expect(report).toContain("[@alexgorbatchev/pi-workspace]");
-      expect(report).toContain("project: ~/.pi/agent/workspaces/solo-tool");
+      expect(report).toContain("workspace: ~/.pi/workspaces/company-b/portal");
       expect(report).toContain("(no assets configured)");
-      expect(report).not.toContain("organization:");
+    });
+
+    it("formats empty report when no workspaces matched", () => {
+      const report = formatWorkspaceReport(mockTheme, { workspaces: [] }, "/home");
+      expect(report).toContain("(no workspace matched)");
     });
   });
 

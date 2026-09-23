@@ -1,6 +1,7 @@
 {
   "@alexgorbatchev/pi-workspace": {
-    "workspacesRoot": "./fixtures/workspaces",
-    "baseDir": "../.."
+    "workspaces": {
+      "~/development/tools/*": ["./fixtures/workspaces/tools/_common", "./fixtures/workspaces/tools/:1"]
+    }
   }
 }

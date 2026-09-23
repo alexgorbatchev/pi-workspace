@@ -7,23 +7,19 @@ import type {
   ISettingsContext,
   IThemeFormatter,
   IWorkspaceConfig,
-  IWorkspaceDirectories,
+  IWorkspaceDirectoryAssets,
   IWorkspaceReportDetails,
   IWorkspaceSettings,
-  IWorkspaceTierAssets,
-  WorkspaceTierType,
 } from "./types.js";
 import {
   collapseHomeDirectory,
   CONFIG_KEY,
-  getTierAssets,
+  getDirectoryAssets,
   getWorkspaceResourcePaths,
   parseWorkspaceConfig,
   readPromptFile,
   readSettingsFile,
-  resolveBaseDir,
   resolveWorkspaceDirectories,
-  resolveWorkspacesRoot,
 } from "./workspaceResolver.js";
 
 const VALID_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
@@ -60,13 +56,9 @@ export function loadEffectiveConfig(cwd: string): IWorkspaceConfig | undefined {
     }
 
     return {
-      ...(globalConfig?.workspacesRoot ? { workspacesRoot: globalConfig.workspacesRoot } : {}),
-      ...(projectConfig?.workspacesRoot ? { workspacesRoot: projectConfig.workspacesRoot } : {}),
-      ...(globalConfig?.baseDir ? { baseDir: globalConfig.baseDir } : {}),
-      ...(projectConfig?.baseDir ? { baseDir: projectConfig.baseDir } : {}),
-      mappings: {
-        ...globalConfig?.mappings,
-        ...projectConfig?.mappings,
+      workspaces: {
+        ...globalConfig?.workspaces,
+        ...projectConfig?.workspaces,
       },
     };
   } catch (error) {
@@ -88,30 +80,29 @@ function formatAssetList(theme: IThemeFormatter, label: string, items: readonly 
   return result;
 }
 
-function formatTierSection(
+function formatWorkspaceSection(
   theme: IThemeFormatter,
-  tierType: WorkspaceTierType,
-  tier: IWorkspaceTierAssets,
+  workspace: IWorkspaceDirectoryAssets,
   homeDirectoryPath?: string,
 ): string {
-  const displayPath = collapseHomeDirectory(tier.directoryPath, homeDirectoryPath);
-  let sectionText = theme.fg("accent", `  ${tierType}: `) + theme.fg("dim", displayPath) + "\n";
+  const displayPath = collapseHomeDirectory(workspace.directoryPath, homeDirectoryPath);
+  let sectionText = theme.fg("accent", "  workspace: ") + theme.fg("dim", displayPath) + "\n";
 
   let hasContributions = false;
-  if (tier.promptFileName) {
-    sectionText += theme.fg("accent", "    prompt: ") + theme.fg("dim", tier.promptFileName) + "\n";
+  if (workspace.promptFileName) {
+    sectionText += theme.fg("accent", "    prompt: ") + theme.fg("dim", workspace.promptFileName) + "\n";
     hasContributions = true;
   }
-  if (tier.skillNames.length > 0) {
-    sectionText += formatAssetList(theme, "skills", tier.skillNames);
+  if (workspace.skillNames.length > 0) {
+    sectionText += formatAssetList(theme, "skills", workspace.skillNames);
     hasContributions = true;
   }
-  if (tier.promptNames.length > 0) {
-    sectionText += formatAssetList(theme, "commands", tier.promptNames);
+  if (workspace.promptNames.length > 0) {
+    sectionText += formatAssetList(theme, "commands", workspace.promptNames);
     hasContributions = true;
   }
-  if (tier.extensionFileNames.length > 0) {
-    sectionText += formatAssetList(theme, "extensions", tier.extensionFileNames);
+  if (workspace.extensionFileNames.length > 0) {
+    sectionText += formatAssetList(theme, "extensions", workspace.extensionFileNames);
     hasContributions = true;
   }
 
@@ -128,18 +119,14 @@ export function formatWorkspaceReport(
   homeDirectoryPath?: string,
 ): string {
   let reportText = theme.fg("mdHeading", `[${CONFIG_KEY}]`) + "\n";
-  reportText +=
-    theme.fg("accent", "  root: ") +
-    theme.fg("dim", collapseHomeDirectory(details.workspacesRoot, homeDirectoryPath)) +
-    "\n";
-  reportText +=
-    theme.fg("accent", "  base: ") + theme.fg("dim", collapseHomeDirectory(details.baseDir, homeDirectoryPath)) + "\n";
 
-  if (details.org) {
-    reportText += formatTierSection(theme, "organization", details.org, homeDirectoryPath);
+  if (details.workspaces.length === 0) {
+    reportText += theme.fg("dim", "  (no workspace matched)") + "\n";
+    return reportText.trimEnd();
   }
-  if (details.project) {
-    reportText += formatTierSection(theme, "project", details.project, homeDirectoryPath);
+
+  for (const workspace of details.workspaces) {
+    reportText += formatWorkspaceSection(theme, workspace, homeDirectoryPath);
   }
 
   return reportText.trimEnd();
@@ -204,51 +191,27 @@ export async function applyWorkspaceSettings(
   }
 }
 
-export function buildSystemPromptAppend(directories: IWorkspaceDirectories): string {
+export function buildSystemPromptAppend(directories: readonly string[]): string {
   const promptSections: string[] = [];
 
-  if (directories.orgDirectory) {
-    const orgPromptContent = readPromptFile(directories.orgDirectory);
-    if (orgPromptContent) {
-      const title = directories.orgName
-        ? `${directories.orgName} Organization Instructions`
-        : "Organization Instructions";
-      promptSections.push(`\n\n# ${title}\n\n${orgPromptContent}`);
+  for (const directoryPath of directories) {
+    const promptContent = readPromptFile(directoryPath);
+    if (promptContent) {
+      promptSections.push(`\n\n${promptContent}`);
     }
   }
 
-  if (directories.projectDirectory) {
-    const projectPromptContent = readPromptFile(directories.projectDirectory);
-    if (projectPromptContent) {
-      const title = directories.projectName
-        ? `${directories.projectName} Project Instructions`
-        : "Project Instructions";
-      promptSections.push(`\n\n# ${title}\n\n${projectPromptContent}`);
-    }
-  }
-
-  return promptSections.join("\n");
+  return promptSections.join("");
 }
 
-function buildReportDetails(
-  cwd: string,
-  effectiveConfig: IWorkspaceConfig | undefined,
-  currentDirectories: IWorkspaceDirectories,
-): IWorkspaceReportDetails {
-  const orgTierAssets = currentDirectories.orgDirectory
-    ? getTierAssets(currentDirectories.orgName ?? "organization", currentDirectories.orgDirectory)
-    : undefined;
+function buildReportDetails(directories: readonly string[]): IWorkspaceReportDetails {
+  const workspaces: IWorkspaceDirectoryAssets[] = [];
 
-  const projectTierAssets = currentDirectories.projectDirectory
-    ? getTierAssets(currentDirectories.projectName ?? "project", currentDirectories.projectDirectory)
-    : undefined;
+  for (const directoryPath of directories) {
+    workspaces.push(getDirectoryAssets(directoryPath));
+  }
 
-  return {
-    workspacesRoot: resolveWorkspacesRoot({ config: effectiveConfig }),
-    baseDir: resolveBaseDir({ config: effectiveConfig }),
-    ...(orgTierAssets !== undefined ? { org: orgTierAssets } : {}),
-    ...(projectTierAssets !== undefined ? { project: projectTierAssets } : {}),
-  };
+  return { workspaces };
 }
 
 export async function workspaceExtension(pi: ExtensionAPI): Promise<void> {
@@ -290,7 +253,7 @@ export async function workspaceExtension(pi: ExtensionAPI): Promise<void> {
     };
   });
 
-  // 5. Inject system prompt instructions
+  // 5. Inject system prompt instructions verbatim without synthetic headers
   pi.on("before_agent_start", async (event, ctx) => {
     const effectiveConfig = loadEffectiveConfig(ctx.cwd);
     const currentDirectories = resolveWorkspaceDirectories(ctx.cwd, { config: effectiveConfig });
@@ -309,26 +272,17 @@ export async function workspaceExtension(pi: ExtensionAPI): Promise<void> {
     const currentDirectories = resolveWorkspaceDirectories(ctx.cwd, { config: effectiveConfig });
 
     const settingsToApply: IWorkspaceSettings[] = [];
-    if (currentDirectories.orgDirectory) {
-      const orgSettings = readSettingsFile(currentDirectories.orgDirectory);
-      if (orgSettings) {
-        settingsToApply.push(orgSettings);
-      }
-    }
-    if (
-      currentDirectories.projectDirectory &&
-      currentDirectories.projectDirectory !== currentDirectories.orgDirectory
-    ) {
-      const projectSettings = readSettingsFile(currentDirectories.projectDirectory);
-      if (projectSettings) {
-        settingsToApply.push(projectSettings);
+    for (const directoryPath of currentDirectories) {
+      const settings = readSettingsFile(directoryPath);
+      if (settings) {
+        settingsToApply.push(settings);
       }
     }
 
     await applyWorkspaceSettings(pi, ctx, settingsToApply);
 
     if (ctx.hasUI) {
-      const reportDetails = buildReportDetails(ctx.cwd, effectiveConfig, currentDirectories);
+      const reportDetails = buildReportDetails(currentDirectories);
       pi.sendMessage({
         customType: CONFIG_KEY,
         content: formatWorkspaceReport(ctx.ui.theme, reportDetails),

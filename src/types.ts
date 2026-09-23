@@ -28,17 +28,11 @@ export interface ISettingsContext {
   readonly modelRegistry: IModelRegistryLookup;
 }
 
-export interface IWorkspaceConfig {
-  readonly workspacesRoot?: string;
-  readonly baseDir?: string;
-  readonly mappings?: Record<string, string>;
-}
+export type WorkspaceTargetDefinition = string[] | string;
+export type WorkspaceMappings = Record<string, WorkspaceTargetDefinition>;
 
-export interface IWorkspaceDirectories {
-  readonly orgDirectory?: string;
-  readonly projectDirectory?: string;
-  readonly orgName?: string;
-  readonly projectName?: string;
+export interface IWorkspaceConfig {
+  readonly workspaces?: WorkspaceMappings | undefined;
 }
 
 export interface IWorkspaceResourcePaths {
@@ -53,10 +47,7 @@ export interface IWorkspaceSettings {
   readonly defaultModel?: string;
 }
 
-export type WorkspaceTierType = "organization" | "project";
-
-export interface IWorkspaceTierAssets {
-  readonly name: string;
+export interface IWorkspaceDirectoryAssets {
   readonly directoryPath: string;
   readonly promptFileName?: string | undefined;
   readonly skillNames: string[];
@@ -65,8 +56,5 @@ export interface IWorkspaceTierAssets {
 }
 
 export interface IWorkspaceReportDetails {
-  readonly workspacesRoot: string;
-  readonly baseDir: string;
-  readonly org?: IWorkspaceTierAssets | undefined;
-  readonly project?: IWorkspaceTierAssets | undefined;
+  readonly workspaces: IWorkspaceDirectoryAssets[];
 }
