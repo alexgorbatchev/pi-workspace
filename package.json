@@ -33,7 +33,8 @@
   "scripts": {
     "check": "bun --bun oxfmt --check . && bun --bun oxlint . && tsc --noEmit",
     "fix": "bun --bun oxfmt --write .",
-    "test": "bun test && PI_OFFLINE=1 bun x pi --no-extensions -e ./src/index.ts --list-models > /dev/null 2>&1"
+    "test": "bun test && PI_OFFLINE=1 bun x pi --no-extensions -e ./src/index.ts --list-models > /dev/null 2>&1",
+    "test:local": "bun run scripts/test-local.ts"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
