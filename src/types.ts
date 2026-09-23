@@ -4,6 +4,10 @@ export type FileExistsFn = (filePath: string) => boolean;
 export type FileReaderFn = (filePath: string) => string;
 export type DirectoryReaderFn = (dirPath: string) => string[];
 
+export interface IThemeFormatter {
+  fg(color: string, text: string): string;
+}
+
 export interface IExtensionModule {
   readonly default?: (api: ExtensionAPI) => void | Promise<void>;
 }
@@ -49,16 +53,13 @@ export interface IWorkspaceSettings {
   readonly defaultModel?: string;
 }
 
-export interface IWorkspaceStatus {
+export interface IWorkspaceReportDetails {
   readonly workspacesRoot: string;
   readonly baseDir: string;
-  readonly cwd: string;
-  readonly orgName?: string;
-  readonly projectName?: string;
-  readonly orgDirectory?: string;
-  readonly projectDirectory?: string;
-  readonly orgPromptFile?: string;
-  readonly projectPromptFile?: string;
+  readonly orgName?: string | undefined;
+  readonly projectName?: string | undefined;
+  readonly orgPromptFile?: string | undefined;
+  readonly projectPromptFile?: string | undefined;
   readonly skillCount: number;
   readonly promptCount: number;
   readonly extensionCount: number;
