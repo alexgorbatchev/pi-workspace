@@ -2,8 +2,10 @@ import { describe, expect, it, spyOn } from "bun:test";
 import { join } from "node:path";
 import {
   CONFIG_KEY,
+  collapseHomeDirectory,
   expandHomeDirectory,
   findPromptFile,
+  getTierAssets,
   getWorkspaceResourcePaths,
   parseWorkspaceConfig,
   readPromptFile,
@@ -15,8 +17,9 @@ import {
 
 describe("workspaceResolver", () => {
   const fakeHome = "/test/home";
+  const isolatedEnv = {};
 
-  describe("expandHomeDirectory", () => {
+  describe("expandHomeDirectory and collapseHomeDirectory", () => {
     it("expands single tilde to home directory", () => {
       expect(expandHomeDirectory("~", fakeHome)).toBe(fakeHome);
     });
@@ -29,11 +32,17 @@ describe("workspaceResolver", () => {
       expect(expandHomeDirectory("/var/projects", fakeHome)).toBe("/var/projects");
       expect(expandHomeDirectory("relative/path", fakeHome)).toBe("relative/path");
     });
+
+    it("collapses home directory to tilde", () => {
+      expect(collapseHomeDirectory(fakeHome, fakeHome)).toBe("~");
+      expect(collapseHomeDirectory(join(fakeHome, "development"), fakeHome)).toBe("~/development");
+      expect(collapseHomeDirectory("/opt/other", fakeHome)).toBe("/opt/other");
+    });
   });
 
   describe("resolveWorkspacesRoot", () => {
     it("uses default workspaces root when no config or env provided", () => {
-      const resolved = resolveWorkspacesRoot({ homeDirectoryPath: fakeHome });
+      const resolved = resolveWorkspacesRoot({ homeDirectoryPath: fakeHome, env: isolatedEnv });
       expect(resolved).toBe(join(fakeHome, ".pi", "agent", "workspaces"));
     });
 
@@ -41,6 +50,7 @@ describe("workspaceResolver", () => {
       const resolved = resolveWorkspacesRoot({
         config: { workspacesRoot: "~/my-workspaces" },
         homeDirectoryPath: fakeHome,
+        env: isolatedEnv,
       });
       expect(resolved).toBe(join(fakeHome, "my-workspaces"));
     });
@@ -57,7 +67,7 @@ describe("workspaceResolver", () => {
 
   describe("resolveBaseDir", () => {
     it("uses default baseDir when no config or env provided", () => {
-      const resolved = resolveBaseDir({ homeDirectoryPath: fakeHome });
+      const resolved = resolveBaseDir({ homeDirectoryPath: fakeHome, env: isolatedEnv });
       expect(resolved).toBe(join(fakeHome, "development"));
     });
 
@@ -65,6 +75,7 @@ describe("workspaceResolver", () => {
       const resolved = resolveBaseDir({
         config: { baseDir: "~/my-repos" },
         homeDirectoryPath: fakeHome,
+        env: isolatedEnv,
       });
       expect(resolved).toBe(join(fakeHome, "my-repos"));
     });
@@ -143,6 +154,7 @@ describe("workspaceResolver", () => {
 
       const result = resolveWorkspaceDirectories(cwd, {
         homeDirectoryPath: fakeHome,
+        env: isolatedEnv,
         fileExists: (path) => existingPaths.has(path),
       });
 
@@ -158,6 +170,7 @@ describe("workspaceResolver", () => {
 
       const result = resolveWorkspaceDirectories(cwd, {
         homeDirectoryPath: fakeHome,
+        env: isolatedEnv,
         fileExists: (path) => existingPaths.has(path),
       });
 
@@ -172,6 +185,7 @@ describe("workspaceResolver", () => {
 
       const result = resolveWorkspaceDirectories(cwd, {
         homeDirectoryPath: fakeHome,
+        env: isolatedEnv,
       });
 
       expect(result.orgName).toBeUndefined();
@@ -191,6 +205,7 @@ describe("workspaceResolver", () => {
       const result = resolveWorkspaceDirectories(externalCwd, {
         config,
         homeDirectoryPath: fakeHome,
+        env: isolatedEnv,
       });
 
       expect(result.orgName).toBe("acme");
@@ -204,6 +219,7 @@ describe("workspaceResolver", () => {
 
       const result = resolveWorkspaceDirectories(externalCwd, {
         homeDirectoryPath: fakeHome,
+        env: isolatedEnv,
       });
 
       expect(result.orgName).toBeUndefined();
@@ -302,6 +318,39 @@ describe("workspaceResolver", () => {
       } finally {
         consoleErrorSpy.mockRestore();
       }
+    });
+  });
+
+  describe("getTierAssets", () => {
+    it("extracts prompt file name, skill names, prompt command names, and extension file names", () => {
+      const tierDir = "/workspaces/example/_common";
+      const existingPaths = new Set([
+        join(tierDir, "APPEND_SYSTEM.md"),
+        join(tierDir, "skills"),
+        join(tierDir, "skills", "deploy-check", "SKILL.md"),
+        join(tierDir, "prompts"),
+        join(tierDir, "extensions"),
+      ]);
+
+      const dirContents = new Map([
+        [join(tierDir, "skills"), ["security-audit.md", "deploy-check"]],
+        [join(tierDir, "prompts"), ["review.md", "compliance.md"]],
+        [join(tierDir, "extensions"), ["auth.ts", "auth.test.ts", "types.d.ts"]],
+      ]);
+
+      const assets = getTierAssets(
+        "example.com",
+        tierDir,
+        (p) => existingPaths.has(p),
+        (p) => dirContents.get(p) ?? [],
+      );
+
+      expect(assets.name).toBe("example.com");
+      expect(assets.directoryPath).toBe(tierDir);
+      expect(assets.promptFileName).toBe("APPEND_SYSTEM.md");
+      expect(assets.skillNames).toEqual(["security-audit", "deploy-check"]);
+      expect(assets.promptNames).toEqual(["/review", "/compliance"]);
+      expect(assets.extensionFileNames).toEqual(["auth.ts"]);
     });
   });
 

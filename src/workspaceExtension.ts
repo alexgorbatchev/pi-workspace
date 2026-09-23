@@ -1,4 +1,3 @@
-import { basename } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
@@ -11,10 +10,13 @@ import type {
   IWorkspaceDirectories,
   IWorkspaceReportDetails,
   IWorkspaceSettings,
+  IWorkspaceTierAssets,
+  WorkspaceTierType,
 } from "./types.js";
 import {
+  collapseHomeDirectory,
   CONFIG_KEY,
-  findPromptFile,
+  getTierAssets,
   getWorkspaceResourcePaths,
   parseWorkspaceConfig,
   readPromptFile,
@@ -73,40 +75,66 @@ export function loadEffectiveConfig(cwd: string): IWorkspaceConfig | undefined {
   }
 }
 
-export function formatWorkspaceReport(theme: IThemeFormatter, details: IWorkspaceReportDetails): string {
+function formatAssetList(theme: IThemeFormatter, label: string, items: readonly string[]): string {
+  if (items.length === 0) {
+    return "";
+  }
+  const formattedItems = items.join(", ");
+  return theme.fg("accent", `    ${label}: `) + theme.fg("dim", `${items.length} (${formattedItems})`) + "\n";
+}
+
+function formatTierSection(
+  theme: IThemeFormatter,
+  tierType: WorkspaceTierType,
+  tier: IWorkspaceTierAssets,
+  homeDirectoryPath?: string,
+): string {
+  const displayPath = collapseHomeDirectory(tier.directoryPath, homeDirectoryPath);
+  let sectionText = theme.fg("accent", `  ${tierType}: `) + theme.fg("dim", `${tier.name} (${displayPath})`) + "\n";
+
+  let hasContributions = false;
+  if (tier.promptFileName) {
+    sectionText += theme.fg("accent", "    prompt: ") + theme.fg("dim", tier.promptFileName) + "\n";
+    hasContributions = true;
+  }
+  if (tier.skillNames.length > 0) {
+    sectionText += formatAssetList(theme, "skills", tier.skillNames);
+    hasContributions = true;
+  }
+  if (tier.promptNames.length > 0) {
+    sectionText += formatAssetList(theme, "commands", tier.promptNames);
+    hasContributions = true;
+  }
+  if (tier.extensionFileNames.length > 0) {
+    sectionText += formatAssetList(theme, "extensions", tier.extensionFileNames);
+    hasContributions = true;
+  }
+
+  if (!hasContributions) {
+    sectionText += theme.fg("dim", "    (no assets configured)") + "\n";
+  }
+
+  return sectionText;
+}
+
+export function formatWorkspaceReport(
+  theme: IThemeFormatter,
+  details: IWorkspaceReportDetails,
+  homeDirectoryPath?: string,
+): string {
   let reportText = theme.fg("mdHeading", `[${CONFIG_KEY}]`) + "\n";
-  reportText += theme.fg("accent", "  root: ") + theme.fg("dim", details.workspacesRoot) + "\n";
-  reportText += theme.fg("accent", "  base: ") + theme.fg("dim", details.baseDir) + "\n";
+  reportText +=
+    theme.fg("accent", "  root: ") +
+    theme.fg("dim", collapseHomeDirectory(details.workspacesRoot, homeDirectoryPath)) +
+    "\n";
+  reportText +=
+    theme.fg("accent", "  base: ") + theme.fg("dim", collapseHomeDirectory(details.baseDir, homeDirectoryPath)) + "\n";
 
-  if (details.orgName) {
-    reportText += theme.fg("accent", "  organization: ") + theme.fg("dim", details.orgName) + "\n";
+  if (details.org) {
+    reportText += formatTierSection(theme, "organization", details.org, homeDirectoryPath);
   }
-  if (details.projectName) {
-    reportText += theme.fg("accent", "  project: ") + theme.fg("dim", details.projectName) + "\n";
-  }
-  if (details.orgPromptFile || details.projectPromptFile) {
-    const promptLabels: string[] = [];
-    if (details.orgPromptFile) {
-      promptLabels.push(`org (${basename(details.orgPromptFile)})`);
-    }
-    if (details.projectPromptFile) {
-      promptLabels.push(`proj (${basename(details.projectPromptFile)})`);
-    }
-    reportText += theme.fg("accent", "  prompts: ") + theme.fg("dim", promptLabels.join(", ")) + "\n";
-  }
-
-  const assetCounts: string[] = [];
-  if (details.skillCount > 0) {
-    assetCounts.push(`${details.skillCount} skills`);
-  }
-  if (details.promptCount > 0) {
-    assetCounts.push(`${details.promptCount} commands`);
-  }
-  if (details.extensionCount > 0) {
-    assetCounts.push(`${details.extensionCount} extensions`);
-  }
-  if (assetCounts.length > 0) {
-    reportText += theme.fg("accent", "  assets: ") + theme.fg("dim", assetCounts.join(", ")) + "\n";
+  if (details.project) {
+    reportText += formatTierSection(theme, "project", details.project, homeDirectoryPath);
   }
 
   return reportText.trimEnd();
@@ -197,6 +225,27 @@ export function buildSystemPromptAppend(directories: IWorkspaceDirectories): str
   return promptSections.join("\n");
 }
 
+function buildReportDetails(
+  cwd: string,
+  effectiveConfig: IWorkspaceConfig | undefined,
+  currentDirectories: IWorkspaceDirectories,
+): IWorkspaceReportDetails {
+  const orgTierAssets = currentDirectories.orgDirectory
+    ? getTierAssets(currentDirectories.orgName ?? "organization", currentDirectories.orgDirectory)
+    : undefined;
+
+  const projectTierAssets = currentDirectories.projectDirectory
+    ? getTierAssets(currentDirectories.projectName ?? "project", currentDirectories.projectDirectory)
+    : undefined;
+
+  return {
+    workspacesRoot: resolveWorkspacesRoot({ config: effectiveConfig }),
+    baseDir: resolveBaseDir({ config: effectiveConfig }),
+    ...(orgTierAssets !== undefined ? { org: orgTierAssets } : {}),
+    ...(projectTierAssets !== undefined ? { project: projectTierAssets } : {}),
+  };
+}
+
 export async function workspaceExtension(pi: ExtensionAPI): Promise<void> {
   const initialCurrentDirectory = process.cwd();
   const initialConfig = loadEffectiveConfig(initialCurrentDirectory);
@@ -253,7 +302,6 @@ export async function workspaceExtension(pi: ExtensionAPI): Promise<void> {
   pi.on("session_start", async (_event, ctx) => {
     const effectiveConfig = loadEffectiveConfig(ctx.cwd);
     const currentDirectories = resolveWorkspaceDirectories(ctx.cwd, { config: effectiveConfig });
-    const resourcePaths = getWorkspaceResourcePaths(currentDirectories);
 
     const settingsToApply: IWorkspaceSettings[] = [];
     if (currentDirectories.orgDirectory) {
@@ -275,25 +323,7 @@ export async function workspaceExtension(pi: ExtensionAPI): Promise<void> {
     await applyWorkspaceSettings(pi, ctx, settingsToApply);
 
     if (ctx.hasUI) {
-      const orgPromptFile = currentDirectories.orgDirectory
-        ? (findPromptFile(currentDirectories.orgDirectory) ?? undefined)
-        : undefined;
-      const projectPromptFile = currentDirectories.projectDirectory
-        ? (findPromptFile(currentDirectories.projectDirectory) ?? undefined)
-        : undefined;
-
-      const reportDetails: IWorkspaceReportDetails = {
-        workspacesRoot: resolveWorkspacesRoot({ config: effectiveConfig }),
-        baseDir: resolveBaseDir({ config: effectiveConfig }),
-        orgName: currentDirectories.orgName,
-        projectName: currentDirectories.projectName,
-        orgPromptFile,
-        projectPromptFile,
-        skillCount: resourcePaths.skillPaths.length,
-        promptCount: resourcePaths.promptPaths.length,
-        extensionCount: resourcePaths.extensionPaths.length,
-      };
-
+      const reportDetails = buildReportDetails(ctx.cwd, effectiveConfig, currentDirectories);
       pi.sendMessage({
         customType: CONFIG_KEY,
         content: formatWorkspaceReport(ctx.ui.theme, reportDetails),
@@ -307,34 +337,10 @@ export async function workspaceExtension(pi: ExtensionAPI): Promise<void> {
     description: "Inspect active workspace resolution, directories, and discovered assets",
     handler: async (_args: string, ctx: ExtensionCommandContext): Promise<void> => {
       const effectiveConfig = loadEffectiveConfig(ctx.cwd);
-      const workspacesRoot = resolveWorkspacesRoot({ config: effectiveConfig });
-      const baseDir = resolveBaseDir({ config: effectiveConfig });
       const currentDirectories = resolveWorkspaceDirectories(ctx.cwd, { config: effectiveConfig });
-      const resourcePaths = getWorkspaceResourcePaths(currentDirectories);
+      const reportDetails = buildReportDetails(ctx.cwd, effectiveConfig, currentDirectories);
 
-      const lines: string[] = [
-        "Workspace Information:",
-        `  Workspaces Root: ${workspacesRoot}`,
-        `  Base Directory:   ${baseDir}`,
-        `  Current CWD:      ${ctx.cwd}`,
-        "",
-        `  Organization:     ${currentDirectories.orgName ?? "(none)"}`,
-        `  Org Directory:    ${currentDirectories.orgDirectory ?? "(none)"}`,
-        `  Org Prompt:       ${currentDirectories.orgDirectory ? (findPromptFile(currentDirectories.orgDirectory) ?? "(none)") : "(none)"}`,
-        "",
-        `  Project:          ${currentDirectories.projectName ?? "(none)"}`,
-        `  Project Directory:${currentDirectories.projectDirectory ?? "(none)"}`,
-        `  Project Prompt:   ${currentDirectories.projectDirectory ? (findPromptFile(currentDirectories.projectDirectory) ?? "(none)") : "(none)"}`,
-        "",
-        `  Discovered Skills:     ${resourcePaths.skillPaths.length}`,
-        ...resourcePaths.skillPaths.map((p) => `    - ${p}`),
-        `  Discovered Prompts:    ${resourcePaths.promptPaths.length}`,
-        ...resourcePaths.promptPaths.map((p) => `    - ${p}`),
-        `  Loaded Extensions:     ${resourcePaths.extensionPaths.length}`,
-        ...resourcePaths.extensionPaths.map((p) => `    - ${p}`),
-      ];
-
-      ctx.ui.notify(lines.join("\n"), "info");
+      ctx.ui.notify(formatWorkspaceReport(ctx.ui.theme, reportDetails), "info");
     },
   });
 }

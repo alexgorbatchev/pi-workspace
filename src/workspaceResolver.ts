@@ -9,6 +9,7 @@ import type {
   IWorkspaceDirectories,
   IWorkspaceResourcePaths,
   IWorkspaceSettings,
+  IWorkspaceTierAssets,
 } from "./types.js";
 
 export const CONFIG_KEY = "@alexgorbatchev/pi-workspace";
@@ -35,8 +36,19 @@ export function expandHomeDirectory(filePath: string, homeDirectoryPath: string 
   return filePath;
 }
 
+export function collapseHomeDirectory(filePath: string, homeDirectoryPath: string = homedir()): string {
+  if (filePath === homeDirectoryPath) {
+    return "~";
+  }
+  const prefix = homeDirectoryPath.endsWith(sep) ? homeDirectoryPath : `${homeDirectoryPath}${sep}`;
+  if (filePath.startsWith(prefix)) {
+    return `~/${filePath.slice(prefix.length).replaceAll("\\", "/")}`;
+  }
+  return filePath;
+}
+
 export function resolveWorkspacesRoot(options?: IWorkspaceResolverOptions): string {
-  const envValue = options?.env?.PI_WORKSPACES_ROOT ?? process.env.PI_WORKSPACES_ROOT;
+  const envValue = options?.env !== undefined ? options.env.PI_WORKSPACES_ROOT : process.env.PI_WORKSPACES_ROOT;
   const configValue = options?.config?.workspacesRoot;
   const rawPath = envValue ?? configValue ?? DEFAULT_WORKSPACES_ROOT;
   const expandedPath = expandHomeDirectory(rawPath, options?.homeDirectoryPath);
@@ -44,7 +56,7 @@ export function resolveWorkspacesRoot(options?: IWorkspaceResolverOptions): stri
 }
 
 export function resolveBaseDir(options?: IWorkspaceResolverOptions): string {
-  const envValue = options?.env?.PI_WORKSPACE_BASE_DIR ?? process.env.PI_WORKSPACE_BASE_DIR;
+  const envValue = options?.env !== undefined ? options.env.PI_WORKSPACE_BASE_DIR : process.env.PI_WORKSPACE_BASE_DIR;
   const configValue = options?.config?.baseDir;
   const rawPath = envValue ?? configValue ?? DEFAULT_BASE_DIR;
   const expandedPath = expandHomeDirectory(rawPath, options?.homeDirectoryPath);
@@ -266,6 +278,82 @@ export function readSettingsFile(
     console.error(`[pi-workspace] Failed to parse settings file ${settingsFilePath}: ${message}`);
     return null;
   }
+}
+
+export function getTierAssets(
+  name: string,
+  directoryPath: string,
+  checkFileExists: FileExistsFn = existsSync,
+  directoryReader: DirectoryReaderFn = (dirPath) => readdirSync(dirPath),
+): IWorkspaceTierAssets {
+  const promptPath = findPromptFile(directoryPath, checkFileExists);
+  const promptFileName = promptPath ? basename(promptPath) : undefined;
+
+  const skillNames: string[] = [];
+  const skillsSubdirectory = join(directoryPath, "skills");
+  if (checkFileExists(skillsSubdirectory)) {
+    try {
+      const entries = directoryReader(skillsSubdirectory);
+      for (const entry of entries) {
+        const skillFilePath = join(skillsSubdirectory, entry, "SKILL.md");
+        if (checkFileExists(skillFilePath) || entry.endsWith(".md")) {
+          const skillName = entry.replace(/\.md$/, "");
+          if (!skillNames.includes(skillName)) {
+            skillNames.push(skillName);
+          }
+        }
+      }
+    } catch {
+      // Ignore unreadable skills directories
+    }
+  }
+
+  const promptNames: string[] = [];
+  const promptsSubdirectory = join(directoryPath, "prompts");
+  if (checkFileExists(promptsSubdirectory)) {
+    try {
+      const entries = directoryReader(promptsSubdirectory);
+      for (const entry of entries) {
+        if (entry.endsWith(".md")) {
+          const commandName = `/${entry.slice(0, -3)}`;
+          if (!promptNames.includes(commandName)) {
+            promptNames.push(commandName);
+          }
+        }
+      }
+    } catch {
+      // Ignore unreadable prompts directories
+    }
+  }
+
+  const extensionFileNames: string[] = [];
+  const extensionsSubdirectory = join(directoryPath, "extensions");
+  if (checkFileExists(extensionsSubdirectory)) {
+    try {
+      const entries = directoryReader(extensionsSubdirectory);
+      for (const entry of entries) {
+        const isSupportedScript =
+          (entry.endsWith(".ts") || entry.endsWith(".js")) &&
+          !entry.endsWith(".d.ts") &&
+          !entry.endsWith(".test.ts") &&
+          !entry.endsWith(".spec.ts");
+        if (isSupportedScript && !extensionFileNames.includes(entry)) {
+          extensionFileNames.push(entry);
+        }
+      }
+    } catch {
+      // Ignore unreadable extensions directories
+    }
+  }
+
+  return {
+    name,
+    directoryPath,
+    ...(promptFileName !== undefined ? { promptFileName } : {}),
+    skillNames,
+    promptNames,
+    extensionFileNames,
+  };
 }
 
 export function getWorkspaceResourcePaths(

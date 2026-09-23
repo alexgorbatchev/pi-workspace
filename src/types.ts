@@ -53,14 +53,20 @@ export interface IWorkspaceSettings {
   readonly defaultModel?: string;
 }
 
+export type WorkspaceTierType = "organization" | "project";
+
+export interface IWorkspaceTierAssets {
+  readonly name: string;
+  readonly directoryPath: string;
+  readonly promptFileName?: string | undefined;
+  readonly skillNames: string[];
+  readonly promptNames: string[];
+  readonly extensionFileNames: string[];
+}
+
 export interface IWorkspaceReportDetails {
   readonly workspacesRoot: string;
   readonly baseDir: string;
-  readonly orgName?: string | undefined;
-  readonly projectName?: string | undefined;
-  readonly orgPromptFile?: string | undefined;
-  readonly projectPromptFile?: string | undefined;
-  readonly skillCount: number;
-  readonly promptCount: number;
-  readonly extensionCount: number;
+  readonly org?: IWorkspaceTierAssets | undefined;
+  readonly project?: IWorkspaceTierAssets | undefined;
 }

@@ -70,7 +70,19 @@ cd ~/development/example.com/auth-service
 pi
 ```
 
-Run `/workspace` in Pi to confirm that both organization and project instructions are active.
+Pi displays the attributed workspace summary:
+
+```text
+[@alexgorbatchev/pi-workspace]
+  root: ~/.pi/agent/workspaces
+  base: ~/development
+  organization: example.com (~/.pi/agent/workspaces/example.com/_common)
+    prompt: APPEND_SYSTEM.md
+  project: auth-service (~/.pi/agent/workspaces/example.com/auth-service)
+    prompt: APPEND_SYSTEM.md
+```
+
+Run `/workspace` in Pi to inspect the active resolution, paths, and asset counts anytime.
 
 # Configuration
 

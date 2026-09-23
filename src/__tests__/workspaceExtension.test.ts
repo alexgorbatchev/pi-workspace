@@ -54,43 +54,66 @@ describe("workspaceExtension", () => {
       fg: (_color: string, text: string) => text,
     };
 
-    it("formats full workspace status report", () => {
-      const report = formatWorkspaceReport(mockTheme, {
-        workspacesRoot: "/home/.pi/agent/workspaces",
-        baseDir: "/home/development",
-        orgName: "example.com",
-        projectName: "auth-service",
-        orgPromptFile: "/home/.pi/agent/workspaces/example.com/_common/APPEND_SYSTEM.md",
-        projectPromptFile: "/home/.pi/agent/workspaces/example.com/auth-service/APPEND_SYSTEM.md",
-        skillCount: 2,
-        promptCount: 3,
-        extensionCount: 1,
-      });
+    it("formats full workspace status report with attribution by tier", () => {
+      const report = formatWorkspaceReport(
+        mockTheme,
+        {
+          workspacesRoot: "/home/.pi/agent/workspaces",
+          baseDir: "/home/development",
+          org: {
+            name: "example.com",
+            directoryPath: "/home/.pi/agent/workspaces/example.com/_common",
+            promptFileName: "APPEND_SYSTEM.md",
+            skillNames: ["example-auth"],
+            promptNames: ["/org-audit"],
+            extensionFileNames: ["telemetry.ts"],
+          },
+          project: {
+            name: "auth-service",
+            directoryPath: "/home/.pi/agent/workspaces/example.com/auth-service",
+            promptFileName: "APPEND_SYSTEM.md",
+            skillNames: ["auth-check"],
+            promptNames: ["/proj-check"],
+            extensionFileNames: [],
+          },
+        },
+        "/home",
+      );
 
       expect(report).toContain("[@alexgorbatchev/pi-workspace]");
-      expect(report).toContain("root: /home/.pi/agent/workspaces");
-      expect(report).toContain("base: /home/development");
-      expect(report).toContain("organization: example.com");
-      expect(report).toContain("project: auth-service");
-      expect(report).toContain("prompts: org (APPEND_SYSTEM.md), proj (APPEND_SYSTEM.md)");
-      expect(report).toContain("assets: 2 skills, 3 commands, 1 extensions");
+      expect(report).toContain("root: ~/.pi/agent/workspaces");
+      expect(report).toContain("base: ~/development");
+      expect(report).toContain("organization: example.com (~/.pi/agent/workspaces/example.com/_common)");
+      expect(report).toContain("prompt: APPEND_SYSTEM.md");
+      expect(report).toContain("skills: 1 (example-auth)");
+      expect(report).toContain("commands: 1 (/org-audit)");
+      expect(report).toContain("extensions: 1 (telemetry.ts)");
+      expect(report).toContain("project: auth-service (~/.pi/agent/workspaces/example.com/auth-service)");
+      expect(report).toContain("skills: 1 (auth-check)");
+      expect(report).toContain("commands: 1 (/proj-check)");
     });
 
-    it("formats minimal report without org or prompts", () => {
-      const report = formatWorkspaceReport(mockTheme, {
-        workspacesRoot: "/home/.pi/agent/workspaces",
-        baseDir: "/home/development",
-        projectName: "solo-tool",
-        skillCount: 0,
-        promptCount: 0,
-        extensionCount: 0,
-      });
+    it("formats minimal report without org or assets", () => {
+      const report = formatWorkspaceReport(
+        mockTheme,
+        {
+          workspacesRoot: "/home/.pi/agent/workspaces",
+          baseDir: "/home/development",
+          project: {
+            name: "solo-tool",
+            directoryPath: "/home/.pi/agent/workspaces/solo-tool",
+            skillNames: [],
+            promptNames: [],
+            extensionFileNames: [],
+          },
+        },
+        "/home",
+      );
 
       expect(report).toContain("[@alexgorbatchev/pi-workspace]");
-      expect(report).toContain("project: solo-tool");
+      expect(report).toContain("project: solo-tool (~/.pi/agent/workspaces/solo-tool)");
+      expect(report).toContain("(no assets configured)");
       expect(report).not.toContain("organization:");
-      expect(report).not.toContain("prompts:");
-      expect(report).not.toContain("assets:");
     });
   });
 
