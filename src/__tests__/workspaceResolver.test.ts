@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { join } from "node:path";
 import {
   CONFIG_KEY,
@@ -279,24 +279,29 @@ describe("workspaceResolver", () => {
     });
 
     it("returns null for malformed JSON or empty settings", () => {
+      const consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
       const dir = "/workspace/proj";
       const settingsPath = join(dir, "settings.json");
 
-      expect(
-        readSettingsFile(
-          dir,
-          (p) => p === settingsPath,
-          () => "{ invalid json",
-        ),
-      ).toBeNull();
+      try {
+        expect(
+          readSettingsFile(
+            dir,
+            (p) => p === settingsPath,
+            () => "{ invalid json",
+          ),
+        ).toBeNull();
 
-      expect(
-        readSettingsFile(
-          dir,
-          (p) => p === settingsPath,
-          () => "{}",
-        ),
-      ).toBeNull();
+        expect(
+          readSettingsFile(
+            dir,
+            (p) => p === settingsPath,
+            () => "{}",
+          ),
+        ).toBeNull();
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
     });
   });
 

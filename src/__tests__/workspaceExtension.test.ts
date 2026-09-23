@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -68,11 +68,16 @@ describe("workspaceExtension", () => {
     });
 
     it("handles extension load errors gracefully without throwing", async () => {
+      const consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
       const mockApi = { name: "mock-pi" };
       const importer = () => Promise.reject(new Error("Failed to compile extension"));
 
-      // Should not throw
-      await loadWorkspaceExtensions(mockApi as never, ["/broken/ext.ts"], importer as never);
+      try {
+        await loadWorkspaceExtensions(mockApi as never, ["/broken/ext.ts"], importer as never);
+        expect(consoleErrorSpy).toHaveBeenCalled();
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
     });
   });
 

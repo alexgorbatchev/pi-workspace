@@ -205,7 +205,8 @@ export function readPromptFile(
     const content = fileReader(promptFilePath).trim();
     return content.length > 0 ? content : null;
   } catch (error) {
-    console.error(`[pi-workspace] Failed to read prompt file ${promptFilePath}:`, error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[pi-workspace] Failed to read prompt file ${promptFilePath}: ${message}`);
     return null;
   }
 }
@@ -261,7 +262,8 @@ export function readSettingsFile(
       ...(defaultModel !== undefined ? { defaultModel } : {}),
     };
   } catch (error) {
-    console.error(`[pi-workspace] Failed to parse settings file ${settingsFilePath}:`, error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[pi-workspace] Failed to parse settings file ${settingsFilePath}: ${message}`);
     return null;
   }
 }

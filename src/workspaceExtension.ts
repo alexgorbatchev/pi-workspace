@@ -65,7 +65,8 @@ export async function loadWorkspaceExtensions(
         await extensionFactory(pi);
       }
     } catch (error) {
-      console.error(`[pi-workspace] Error loading workspace extension ${extensionPath}:`, error);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[pi-workspace] Error loading workspace extension ${extensionPath}: ${message}`);
     }
   }
 }
