@@ -1,0 +1,148 @@
+import { describe, expect, it } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  applyWorkspaceSettings,
+  buildSystemPromptAppend,
+  loadWorkspaceExtensions,
+  workspaceExtension,
+} from "../workspaceExtension.js";
+
+describe("workspaceExtension", () => {
+  describe("buildSystemPromptAppend", () => {
+    it("returns empty string when no prompt files exist", () => {
+      const result = buildSystemPromptAppend({
+        orgDirectory: "/nonexistent/org",
+        projectDirectory: "/nonexistent/proj",
+      });
+      expect(result).toBe("");
+    });
+
+    it("layers org instructions and project instructions", () => {
+      const testDir = join(tmpdir(), `pi-ws-test-${Date.now()}`);
+      const orgDir = join(testDir, "org");
+      const projDir = join(testDir, "proj");
+
+      mkdirSync(orgDir, { recursive: true });
+      mkdirSync(projDir, { recursive: true });
+
+      writeFileSync(join(orgDir, "APPEND_SYSTEM.md"), "Follow company security standards.");
+      writeFileSync(join(projDir, "APPEND_SYSTEM.md"), "Run npm test before committing.");
+
+      try {
+        const result = buildSystemPromptAppend({
+          orgName: "example.com",
+          orgDirectory: orgDir,
+          projectName: "auth-service",
+          projectDirectory: projDir,
+        });
+
+        expect(result).toContain("# example.com Organization Instructions");
+        expect(result).toContain("Follow company security standards.");
+        expect(result).toContain("# auth-service Project Instructions");
+        expect(result).toContain("Run npm test before committing.");
+      } finally {
+        rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("loadWorkspaceExtensions", () => {
+    it("calls module default factory with pi ExtensionAPI", async () => {
+      let isFactoryCalled = false;
+      let passedApi: unknown = null;
+
+      const mockApi = { name: "mock-pi" };
+      const importer = async () => ({
+        default: (api: unknown) => {
+          isFactoryCalled = true;
+          passedApi = api;
+        },
+      });
+
+      await loadWorkspaceExtensions(mockApi as never, ["/mock/ext.ts"], importer as never);
+
+      expect(isFactoryCalled).toBe(true);
+      expect(passedApi).toBe(mockApi);
+    });
+
+    it("handles extension load errors gracefully without throwing", async () => {
+      const mockApi = { name: "mock-pi" };
+      const importer = () => Promise.reject(new Error("Failed to compile extension"));
+
+      // Should not throw
+      await loadWorkspaceExtensions(mockApi as never, ["/broken/ext.ts"], importer as never);
+    });
+  });
+
+  describe("applyWorkspaceSettings", () => {
+    it("applies defaultTools, defaultThinkingLevel, and defaultModel", async () => {
+      let activeTools: string[] = [];
+      let thinkingLevel = "";
+      let selectedModel: unknown = null;
+
+      const mockPi = {
+        setActiveTools: (tools: string[]) => {
+          activeTools = tools;
+        },
+        setThinkingLevel: (level: string) => {
+          thinkingLevel = level;
+        },
+        setModel: async (model: unknown) => {
+          selectedModel = model;
+        },
+      };
+
+      const mockModels = [
+        { provider: "anthropic", id: "claude-3-5-sonnet" },
+        { provider: "openai", id: "gpt-4o" },
+      ];
+
+      const mockCtx = {
+        modelRegistry: {
+          find: (provider: string, id: string) => mockModels.find((m) => m.provider === provider && m.id === id),
+          getAll: () => mockModels,
+        },
+      };
+
+      const settings = [
+        {
+          defaultTools: ["bash", "read"],
+          defaultThinkingLevel: "high",
+          defaultModel: "anthropic/claude-3-5-sonnet",
+        },
+      ];
+
+      await applyWorkspaceSettings(mockPi as never, mockCtx, settings);
+
+      expect(activeTools).toEqual(["bash", "read"]);
+      expect(thinkingLevel).toBe("high");
+      expect(selectedModel).toEqual({ provider: "anthropic", id: "claude-3-5-sonnet" });
+    });
+  });
+
+  describe("workspaceExtension registration", () => {
+    it("registers event handlers and workspace command", async () => {
+      const registeredEvents: string[] = [];
+      const registeredCommands: string[] = [];
+
+      const mockPi = {
+        on: (event: string) => {
+          registeredEvents.push(event);
+          return () => {};
+        },
+        registerCommand: (name: string) => {
+          registeredCommands.push(name);
+        },
+      };
+
+      await workspaceExtension(mockPi as never);
+
+      expect(registeredEvents).toContain("resources_discover");
+      expect(registeredEvents).toContain("before_agent_start");
+      expect(registeredEvents).toContain("session_start");
+      expect(registeredCommands).toContain("workspace");
+    });
+  });
+});

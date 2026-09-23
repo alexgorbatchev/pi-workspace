@@ -1,0 +1,60 @@
+{
+  "name": "@alexgorbatchev/pi-workspace",
+  "version": "1.0.0",
+  "description": "Pi extension for hierarchical out-of-tree workspaces (org-wide and project-specific skills, prompts, extensions, and system instructions)",
+  "type": "module",
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "workspace",
+    "workspaces",
+    "context",
+    "skills",
+    "prompts"
+  ],
+  "author": "Alex Gorbatchev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexgorbatchev/pi-workspace.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alexgorbatchev/pi-workspace/issues"
+  },
+  "homepage": "https://github.com/alexgorbatchev/pi-workspace#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "check": "bun --bun oxfmt --check . && bun --bun oxlint . && tsc --noEmit",
+    "fix": "bun --bun oxfmt --write .",
+    "test": "bun test && PI_OFFLINE=1 bun x pi --no-extensions -e ./src/index.ts --list-models > /dev/null 2>&1"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "devDependencies": {
+    "@alexgorbatchev/typescript-ai-policy": "^13.0.0",
+    "@earendil-works/pi-ai": "^0.85.1",
+    "@earendil-works/pi-coding-agent": "^0.85.1",
+    "@earendil-works/pi-tui": "^0.85.1",
+    "@types/bun": "^1.4.2",
+    "@types/node": "^22.20.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "oxfmt": "^0.67.0",
+    "oxlint": "^1.82.0",
+    "typescript": "^6.0.2"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}

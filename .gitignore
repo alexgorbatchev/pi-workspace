@@ -1,0 +1,10 @@
+node_modules/
+.cache
+.tmp
+.codegraph
+.pi-subagents
+.pi/agent
+progress.md
+*.tgz
+*.sqlite-wal
+*.sqlite-shm
