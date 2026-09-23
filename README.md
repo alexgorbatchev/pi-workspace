@@ -15,7 +15,7 @@
 2. The extension inspects the working directory and matches it against your workspace root (by default, `~/.pi/agent/workspaces`).
 3. It loads shared organization resources from `~/.pi/agent/workspaces/example.com/_common/` and project resources from `~/.pi/agent/workspaces/example.com/auth-service/`.
 4. Organization instructions are layered above project instructions in the system prompt, while project skills and commands override organizational ones when names collide.
-5. Run `/workspace` at any time to verify the active workspace resolution, directories, and loaded assets.
+5. On startup, Pi displays the attributed workspace summary detailing the active organization, project, instruction files, and assets.
 
 # How it Really Works
 
@@ -82,8 +82,6 @@ Pi displays the attributed workspace summary:
     prompt: APPEND_SYSTEM.md
 ```
 
-Run `/workspace` in Pi to inspect the active resolution, paths, and asset counts anytime.
-
 # Configuration
 
 Configure the extension in `~/.pi/agent/settings.json` under the `"@alexgorbatchev/pi-workspace"` key:
@@ -107,12 +105,6 @@ Configure the extension in `~/.pi/agent/settings.json` under the `"@alexgorbatch
 | `mappings`              | object | `{}`                     | Explicit mapping of repository paths to `<org>/<project>` workspace paths |
 | `PI_WORKSPACES_ROOT`    | env    | none                     | Overrides the workspace root path                                         |
 | `PI_WORKSPACE_BASE_DIR` | env    | none                     | Overrides the base checkout directory                                     |
-
-# Commands
-
-| Command      | Description                                                                |
-| :----------- | :------------------------------------------------------------------------- |
-| `/workspace` | Display the active workspace resolution, directory paths, and asset counts |
 
 # License
 

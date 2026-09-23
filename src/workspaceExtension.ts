@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type {
@@ -330,17 +330,5 @@ export async function workspaceExtension(pi: ExtensionAPI): Promise<void> {
         display: true,
       });
     }
-  });
-
-  // 7. Register /workspace command for manual inspection
-  pi.registerCommand("workspace", {
-    description: "Inspect active workspace resolution, directories, and discovered assets",
-    handler: async (_args: string, ctx: ExtensionCommandContext): Promise<void> => {
-      const effectiveConfig = loadEffectiveConfig(ctx.cwd);
-      const currentDirectories = resolveWorkspaceDirectories(ctx.cwd, { config: effectiveConfig });
-      const reportDetails = buildReportDetails(ctx.cwd, effectiveConfig, currentDirectories);
-
-      ctx.ui.notify(formatWorkspaceReport(ctx.ui.theme, reportDetails), "info");
-    },
   });
 }

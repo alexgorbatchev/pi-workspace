@@ -197,9 +197,8 @@ describe("workspaceExtension", () => {
   });
 
   describe("workspaceExtension registration", () => {
-    it("registers event handlers and workspace command", async () => {
+    it("registers event handlers and message renderer", async () => {
       const registeredEvents: string[] = [];
-      const registeredCommands: string[] = [];
       let isRendererRegistered = false;
 
       const mockPi = {
@@ -210,9 +209,6 @@ describe("workspaceExtension", () => {
           registeredEvents.push(event);
           return () => {};
         },
-        registerCommand: (name: string) => {
-          registeredCommands.push(name);
-        },
       };
 
       await workspaceExtension(mockPi as never);
@@ -221,7 +217,6 @@ describe("workspaceExtension", () => {
       expect(registeredEvents).toContain("resources_discover");
       expect(registeredEvents).toContain("before_agent_start");
       expect(registeredEvents).toContain("session_start");
-      expect(registeredCommands).toContain("workspace");
     });
   });
 });

@@ -1,1 +1,6 @@
-{}
+{
+  "@alexgorbatchev/pi-workspace": {
+    "workspacesRoot": "./fixtures/workspaces",
+    "baseDir": "../.."
+  }
+}
