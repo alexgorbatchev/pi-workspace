@@ -349,7 +349,7 @@ describe("workspaceResolver", () => {
       expect(assets.directoryPath).toBe(tierDir);
       expect(assets.promptFileName).toBe("APPEND_SYSTEM.md");
       expect(assets.skillNames).toEqual(["security-audit", "deploy-check"]);
-      expect(assets.promptNames).toEqual(["/review", "/compliance"]);
+      expect(assets.promptNames).toEqual(["review", "compliance"]);
       expect(assets.extensionFileNames).toEqual(["auth.ts"]);
     });
   });

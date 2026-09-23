@@ -65,7 +65,7 @@ describe("workspaceExtension", () => {
             directoryPath: "/home/.pi/agent/workspaces/example.com/_common",
             promptFileName: "APPEND_SYSTEM.md",
             skillNames: ["example-auth"],
-            promptNames: ["/org-audit", "/jira-check"],
+            promptNames: ["org-audit", "jira-check"],
             extensionFileNames: ["telemetry.ts"],
           },
           project: {
@@ -73,7 +73,7 @@ describe("workspaceExtension", () => {
             directoryPath: "/home/.pi/agent/workspaces/example.com/auth-service",
             promptFileName: "APPEND_SYSTEM.md",
             skillNames: ["beta-skill", "alpha-skill"],
-            promptNames: ["/proj-check"],
+            promptNames: ["proj-check"],
             extensionFileNames: [],
           },
         },
@@ -83,14 +83,14 @@ describe("workspaceExtension", () => {
       expect(report).toContain("[@alexgorbatchev/pi-workspace]");
       expect(report).toContain("root: ~/.pi/agent/workspaces");
       expect(report).toContain("base: ~/development");
-      expect(report).toContain("organization: example.com (~/.pi/agent/workspaces/example.com/_common)");
+      expect(report).toContain("organization: ~/.pi/agent/workspaces/example.com/_common");
       expect(report).toContain("prompt: APPEND_SYSTEM.md");
       expect(report).toContain("    skills:\n      - example-auth");
-      expect(report).toContain("    commands:\n      - /jira-check\n      - /org-audit");
+      expect(report).toContain("    commands:\n      - jira-check\n      - org-audit");
       expect(report).toContain("    extensions:\n      - telemetry.ts");
-      expect(report).toContain("project: auth-service (~/.pi/agent/workspaces/example.com/auth-service)");
+      expect(report).toContain("project: ~/.pi/agent/workspaces/example.com/auth-service");
       expect(report).toContain("    skills:\n      - alpha-skill\n      - beta-skill");
-      expect(report).toContain("    commands:\n      - /proj-check");
+      expect(report).toContain("    commands:\n      - proj-check");
     });
 
     it("formats minimal report without org or assets", () => {
@@ -111,7 +111,7 @@ describe("workspaceExtension", () => {
       );
 
       expect(report).toContain("[@alexgorbatchev/pi-workspace]");
-      expect(report).toContain("project: solo-tool (~/.pi/agent/workspaces/solo-tool)");
+      expect(report).toContain("project: ~/.pi/agent/workspaces/solo-tool");
       expect(report).toContain("(no assets configured)");
       expect(report).not.toContain("organization:");
     });

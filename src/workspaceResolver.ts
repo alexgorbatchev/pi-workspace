@@ -315,7 +315,7 @@ export function getTierAssets(
       const entries = directoryReader(promptsSubdirectory);
       for (const entry of entries) {
         if (entry.endsWith(".md")) {
-          const commandName = `/${entry.slice(0, -3)}`;
+          const commandName = entry.slice(0, -3);
           if (!promptNames.includes(commandName)) {
             promptNames.push(commandName);
           }

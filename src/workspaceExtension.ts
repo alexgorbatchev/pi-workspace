@@ -79,7 +79,8 @@ function formatAssetList(theme: IThemeFormatter, label: string, items: readonly 
   if (items.length === 0) {
     return "";
   }
-  const sortedItems = [...items].sort((firstItem, secondItem) => firstItem.localeCompare(secondItem));
+  const cleanItems = items.map((item) => (label === "commands" && item.startsWith("/") ? item.slice(1) : item));
+  const sortedItems = [...cleanItems].sort((firstItem, secondItem) => firstItem.localeCompare(secondItem));
   let result = theme.fg("accent", `    ${label}:`) + "\n";
   for (const item of sortedItems) {
     result += theme.fg("dim", `      - ${item}`) + "\n";
@@ -94,7 +95,7 @@ function formatTierSection(
   homeDirectoryPath?: string,
 ): string {
   const displayPath = collapseHomeDirectory(tier.directoryPath, homeDirectoryPath);
-  let sectionText = theme.fg("accent", `  ${tierType}: `) + theme.fg("dim", `${tier.name} (${displayPath})`) + "\n";
+  let sectionText = theme.fg("accent", `  ${tierType}: `) + theme.fg("dim", displayPath) + "\n";
 
   let hasContributions = false;
   if (tier.promptFileName) {
