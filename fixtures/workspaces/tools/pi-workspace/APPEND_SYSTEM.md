@@ -1,4 +1,4 @@
-# Pi Workspace Project Guidelines
+# Layer 2: Project Guidelines (Project Specific)
 
 - Test all changes using `bun test`
 - Format code with `bun run fix`

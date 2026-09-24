@@ -12,10 +12,13 @@ const targetCwd = isPortalTarget ? portalMockRepoPath : repoRoot;
 const forwardedArgs = isPortalTarget ? userArgs.slice(1) : userArgs;
 
 const defaultPrompt = isPortalTarget
-  ? ["What instructions and commands are configured for client-portal?"]
-  : ["What organization and project instructions are configured in your system prompt?"];
+  ? ["List the exact instructions and commands configured for client-portal."]
+  : [
+      "List the workspace instruction layers configured in your system prompt, clearly identifying Layer 1 (organization/shared) and Layer 2 (project-specific).",
+    ];
 
-const promptArgs = forwardedArgs.length > 0 ? forwardedArgs : defaultPrompt;
+const hasPositionalPrompt = forwardedArgs.some((arg) => !arg.startsWith("-"));
+const promptArgs = hasPositionalPrompt ? forwardedArgs : [...forwardedArgs, ...defaultPrompt];
 
 console.log("=== @alexgorbatchev/pi-workspace test:local ===");
 console.log(`Target: ${isPortalTarget ? "company-b/client-portal (exact mapping)" : "tools/* (wildcard mapping)"}`);

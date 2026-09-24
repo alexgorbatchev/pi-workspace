@@ -1,4 +1,4 @@
-# Organization Guidelines
+# Layer 1: Organization Guidelines (Shared)
 
 Follow standard TypeScript conventions:
 
