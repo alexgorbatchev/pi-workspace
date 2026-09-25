@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import type {
   DirectoryReaderFn,
   FileExistsFn,
@@ -304,6 +304,46 @@ export function scanDirectoryAssets(
   };
 }
 
+export function findMainRepositoryRoot(startDirectory: string): string | undefined {
+  let currentDirectory = resolve(startDirectory);
+
+  while (true) {
+    const gitPath = join(currentDirectory, ".git");
+    if (existsSync(gitPath)) {
+      try {
+        const stats = statSync(gitPath);
+        if (stats.isDirectory()) {
+          return currentDirectory;
+        }
+        if (stats.isFile()) {
+          const content = readFileSync(gitPath, "utf-8").trim();
+          const match = content.match(/^gitdir:\s*(.+)$/m);
+          if (match && match[1]) {
+            const gitDir = resolve(currentDirectory, match[1].trim());
+            const commonDirFile = join(gitDir, "commondir");
+            if (existsSync(commonDirFile)) {
+              const commonDirRelative = readFileSync(commonDirFile, "utf-8").trim();
+              const commonDir = resolve(gitDir, commonDirRelative);
+              return dirname(commonDir);
+            }
+            return resolve(gitDir, "../../..");
+          }
+        }
+      } catch {
+        // Ignore unreadable .git entries
+      }
+    }
+
+    const parentDirectory = dirname(currentDirectory);
+    if (parentDirectory === currentDirectory) {
+      break;
+    }
+    currentDirectory = parentDirectory;
+  }
+
+  return undefined;
+}
+
 export function resolveMatchedWorkspaceConfigs(
   currentWorkingDirectory: string,
   options?: IWorkspaceResolverOptions,
@@ -315,10 +355,17 @@ export function resolveMatchedWorkspaceConfigs(
 
   const checkFileExists = options?.fileExists ?? existsSync;
   const directoryReader = options?.directoryReader ?? readdirSync;
+  const mainRepositoryRoot = findMainRepositoryRoot(currentWorkingDirectory);
   const matchedList: IWorkspaceMatchedConfig[] = [];
 
   for (const rule of rules) {
-    if (matchWorkspacePattern(rule.glob, currentWorkingDirectory, options?.homeDirectoryPath)) {
+    const isDirectMatch = matchWorkspacePattern(rule.glob, currentWorkingDirectory, options?.homeDirectoryPath);
+    const isWorktreeMatch =
+      !isDirectMatch && mainRepositoryRoot !== undefined
+        ? matchWorkspacePattern(rule.glob, mainRepositoryRoot, options?.homeDirectoryPath)
+        : false;
+
+    if (isDirectMatch || isWorktreeMatch) {
       const targetPaths = Array.isArray(rule.path) ? rule.path : [rule.path];
 
       for (const rawPath of targetPaths) {
@@ -327,14 +374,17 @@ export function resolveMatchedWorkspaceConfigs(
 
         if (checkFileExists(resolvedDirectory)) {
           const scan = scanDirectoryAssets(resolvedDirectory, checkFileExists, directoryReader);
-          matchedList.push({
-            glob: rule.glob,
-            directoryPath: resolvedDirectory,
-            ...(scan.promptFileName !== undefined ? { promptFileName: scan.promptFileName } : {}),
-            skillNames: scan.skillNames,
-            promptNames: scan.promptNames,
-            extensionFileNames: scan.extensionFileNames,
-          });
+          const alreadyMatched = matchedList.some((m) => m.directoryPath === resolvedDirectory && m.glob === rule.glob);
+          if (!alreadyMatched) {
+            matchedList.push({
+              glob: rule.glob,
+              directoryPath: resolvedDirectory,
+              ...(scan.promptFileName !== undefined ? { promptFileName: scan.promptFileName } : {}),
+              skillNames: scan.skillNames,
+              promptNames: scan.promptNames,
+              extensionFileNames: scan.extensionFileNames,
+            });
+          }
         }
       }
     }

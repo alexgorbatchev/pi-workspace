@@ -1,8 +1,11 @@
 import { describe, expect, it, spyOn } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   collapseHomeDirectory,
   expandHomeDirectory,
+  findMainRepositoryRoot,
   findPromptFile,
   getWorkspaceResourcePaths,
   matchWorkspacePattern,
@@ -198,6 +201,72 @@ describe("workspaceResolver", () => {
       });
 
       expect(directories).toEqual([projDir]);
+    });
+  });
+
+  describe("findMainRepositoryRoot and worktree support", () => {
+    it("returns undefined when no .git is found", () => {
+      expect(findMainRepositoryRoot("/test/home/nonexistent")).toBeUndefined();
+    });
+
+    it("resolves main repository root for a worktree", () => {
+      const testBase = join(tmpdir(), `pi-wt-unit-${Date.now()}`);
+      const mainRepo = join(testBase, "repo");
+      const worktreeDir = join(mainRepo, ".worktrees", "task-1");
+
+      mkdirSync(mainRepo, { recursive: true });
+      mkdirSync(worktreeDir, { recursive: true });
+
+      const gitDir = join(mainRepo, ".git", "worktrees", "task-1");
+      mkdirSync(gitDir, { recursive: true });
+
+      writeFileSync(join(worktreeDir, ".git"), `gitdir: ${gitDir}\n`);
+      writeFileSync(join(gitDir, "commondir"), "../..\n");
+      mkdirSync(join(mainRepo, ".git"), { recursive: true });
+
+      try {
+        const detected = findMainRepositoryRoot(worktreeDir);
+        expect(detected).toBe(mainRepo);
+
+        const subfolder = join(worktreeDir, "src", "nested");
+        mkdirSync(subfolder, { recursive: true });
+        expect(findMainRepositoryRoot(subfolder)).toBe(mainRepo);
+      } finally {
+        rmSync(testBase, { recursive: true, force: true });
+      }
+    });
+
+    it("matches workspace rules when cwd is inside a git worktree", () => {
+      const testBase = join(tmpdir(), `pi-wt-match-${Date.now()}`);
+      const mainRepo = join(testBase, "company", "projB");
+      const worktreeDir = join(mainRepo, ".worktrees", "task-1");
+      const assetDir = join(testBase, "ai", "projB");
+
+      mkdirSync(mainRepo, { recursive: true });
+      mkdirSync(worktreeDir, { recursive: true });
+      mkdirSync(assetDir, { recursive: true });
+
+      const gitDir = join(mainRepo, ".git", "worktrees", "task-1");
+      mkdirSync(gitDir, { recursive: true });
+      writeFileSync(join(worktreeDir, ".git"), `gitdir: ${gitDir}\n`);
+      writeFileSync(join(gitDir, "commondir"), "../..\n");
+
+      const config = {
+        configs: [
+          {
+            glob: join(testBase, "company", "projB"),
+            path: assetDir,
+          },
+        ],
+      };
+
+      try {
+        const matched = resolveMatchedWorkspaceConfigs(worktreeDir, { config });
+        expect(matched.length).toBe(1);
+        expect(matched[0]?.directoryPath).toBe(assetDir);
+      } finally {
+        rmSync(testBase, { recursive: true, force: true });
+      }
     });
   });
 

@@ -14,6 +14,7 @@ import type {
 import {
   collapseHomeDirectory,
   CONFIG_KEY,
+  findMainRepositoryRoot,
   getWorkspaceResourcePaths,
   parseWorkspaceConfig,
   readPromptFile,
@@ -122,6 +123,13 @@ export function formatWorkspaceReport(
   let reportText = theme.fg("mdHeading", `[${CONFIG_KEY}]`) + "\n";
   reportText +=
     theme.fg("accent", "  cwd: ") + theme.fg("dim", collapseHomeDirectory(details.cwd, homeDirectoryPath)) + "\n";
+
+  if (details.mainRepositoryRoot && details.mainRepositoryRoot !== details.cwd) {
+    reportText +=
+      theme.fg("accent", "  repository: ") +
+      theme.fg("dim", collapseHomeDirectory(details.mainRepositoryRoot, homeDirectoryPath)) +
+      "\n";
+  }
 
   if (details.configs.length === 0) {
     reportText += theme.fg("dim", "  (no matching workspace config)") + "\n";
@@ -276,9 +284,14 @@ export async function workspaceExtension(pi: ExtensionAPI): Promise<void> {
 
     if (ctx.hasUI) {
       const matchedConfigs = resolveMatchedWorkspaceConfigs(ctx.cwd, { config: effectiveConfig });
+      const mainRepositoryRoot = findMainRepositoryRoot(ctx.cwd);
       pi.sendMessage({
         customType: CONFIG_KEY,
-        content: formatWorkspaceReport(ctx.ui.theme, { cwd: ctx.cwd, configs: matchedConfigs }),
+        content: formatWorkspaceReport(ctx.ui.theme, {
+          cwd: ctx.cwd,
+          ...(mainRepositoryRoot !== undefined ? { mainRepositoryRoot } : {}),
+          configs: matchedConfigs,
+        }),
         display: true,
       });
     }

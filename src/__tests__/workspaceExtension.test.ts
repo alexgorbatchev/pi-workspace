@@ -119,6 +119,21 @@ describe("workspaceExtension", () => {
       const report = formatWorkspaceReport(mockTheme, { cwd: "/home/development/unmatched", configs: [] }, "/home");
       expect(report).toContain("(no matching workspace config)");
     });
+
+    it("formats repository path when running in a worktree", () => {
+      const report = formatWorkspaceReport(
+        mockTheme,
+        {
+          cwd: "/home/development/company-a/auth-service/.worktrees/task-1",
+          mainRepositoryRoot: "/home/development/company-a/auth-service",
+          configs: [],
+        },
+        "/home",
+      );
+
+      expect(report).toContain("cwd: ~/development/company-a/auth-service/.worktrees/task-1");
+      expect(report).toContain("repository: ~/development/company-a/auth-service");
+    });
   });
 
   describe("loadWorkspaceExtensions", () => {

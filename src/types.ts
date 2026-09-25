@@ -65,5 +65,6 @@ export interface IWorkspaceMatchedConfig {
 
 export interface IWorkspaceReportDetails {
   readonly cwd: string;
+  readonly mainRepositoryRoot?: string | undefined;
   readonly configs: IWorkspaceMatchedConfig[];
 }

@@ -5,6 +5,7 @@
 - **Out-of-tree configuration**: Keeps all project and organization assets completely outside the target repository, preserving a clean Git working tree.
 - **Declarative pattern mapping**: Maps repository checkouts to layered workspace directories using exact paths or single-star (`*`) wildcards.
 - **Ordered layer resolution**: Loads and cascades shared organizational layers and repository-specific layers in the exact sequence configured.
+- **Git worktree support**: Automatically resolves the main repository root when running inside `.worktrees/<name>`, `.workspaces/<name>`, or detached worktrees.
 - **Verbatim system instructions**: Reads and appends `APPEND_SYSTEM.md`, `SYSTEM.md`, `AGENTS.md`, or `CLAUDE.md` files as written, without synthetic headers.
 - **Native asset discovery**: Feeds external `skills/` and `prompts/` subdirectories into Pi's resource loader as native `/skill:<name>` and `/<name>` commands.
 - **Dynamic extension loading**: Evaluates and registers workspace-scoped TypeScript and JavaScript extensions at startup.
@@ -22,8 +23,8 @@
 
 `@alexgorbatchev/pi-workspace` hooks into Pi's extension lifecycle to inject resources without requiring `.pi/` inside the target repository:
 
-- **Pattern resolution**: When Pi starts or switches directories, the extension compares the current working directory against configured workspace patterns. Exact patterns take precedence over wildcard patterns.
-- **Capture interpolation**: Single-segment wildcards (`*`) and named parameters (`:name`) capture path segments from the current working directory. Targets reference them via `:1`, `:2` (or `$1`, `$2`) and `:name`.
+- **Pattern resolution**: When Pi starts or switches directories, the extension compares the current working directory against configured workspace patterns.
+- **Worktree detection**: When running inside a Git worktree (such as `<repo>/.worktrees/<name>`, `<repo>/.workspaces/<name>`, or a detached worktree directory), the extension resolves the worktree's `.git` file and `commondir` back to the canonical main repository root. Rules configured for the repository automatically apply in worktrees.
 - **Layer ordering**: Target directories are evaluated in the order listed in the mapping array. Layer instructions are appended in that exact sequence, and project-level skills and prompt templates override earlier layers when names collide.
 - **Verbatim instruction injection**: Before each agent turn (`before_agent_start`), the extension checks each resolved directory for `APPEND_SYSTEM.md`, `SYSTEM.md`, `AGENTS.md`, or `CLAUDE.md`. The contents are appended directly to Pi's system prompt without synthetic section headers.
 - **Resource discovery**: On `resources_discover`, existing `skills/` and `prompts/` subdirectories from all matched layers are registered with Pi's resource loader. Command names drop any leading slashes and are sorted alphabetically.
