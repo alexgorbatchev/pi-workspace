@@ -59,12 +59,12 @@ describe("workspaceResolver", () => {
         "@alexgorbatchev/pi-workspace": {
           configs: [
             {
-              glob: "/company/*",
-              path: "/company/ai/commonA",
+              when: "/company/*",
+              load: "/company/ai/commonA",
             },
             {
-              glob: "/company/projB",
-              path: ["/company/ai/projB", "/company/ai/projB-overrides"],
+              when: "/company/projB",
+              load: ["/company/ai/projB", "/company/ai/projB-overrides"],
             },
           ],
         },
@@ -74,18 +74,18 @@ describe("workspaceResolver", () => {
       expect(parsed).toEqual({
         configs: [
           {
-            glob: "/company/*",
-            path: "/company/ai/commonA",
+            when: "/company/*",
+            load: "/company/ai/commonA",
           },
           {
-            glob: "/company/projB",
-            path: ["/company/ai/projB", "/company/ai/projB-overrides"],
+            when: "/company/projB",
+            load: ["/company/ai/projB", "/company/ai/projB-overrides"],
           },
         ],
       });
     });
 
-    it("parses legacy workspaces map into configs array", () => {
+    it("parses legacy workspaces map and glob/path keys into configs array", () => {
       const settings = {
         "@alexgorbatchev/pi-workspace": {
           workspaces: {
@@ -98,8 +98,8 @@ describe("workspaceResolver", () => {
       expect(parsed).toEqual({
         configs: [
           {
-            glob: "/company/*",
-            path: "/company/ai/commonA",
+            when: "/company/*",
+            load: "/company/ai/commonA",
           },
         ],
       });
@@ -147,12 +147,12 @@ describe("workspaceResolver", () => {
       const config = {
         configs: [
           {
-            glob: "~/development/company/*",
-            path: "~/ai/commonA",
+            when: "~/development/company/*",
+            load: "~/ai/commonA",
           },
           {
-            glob: "~/development/company/projB",
-            path: "~/ai/projB",
+            when: "~/development/company/projB",
+            load: "~/ai/projB",
           },
         ],
       };
@@ -164,10 +164,10 @@ describe("workspaceResolver", () => {
       });
 
       expect(matched.length).toBe(2);
-      expect(matched[0]?.glob).toBe("~/development/company/*");
-      expect(matched[0]?.directoryPath).toBe(orgDir);
-      expect(matched[1]?.glob).toBe("~/development/company/projB");
-      expect(matched[1]?.directoryPath).toBe(projDir);
+      expect(matched[0]?.when).toBe("~/development/company/*");
+      expect(matched[0]?.load).toBe(orgDir);
+      expect(matched[1]?.when).toBe("~/development/company/projB");
+      expect(matched[1]?.load).toBe(projDir);
 
       const directories = resolveWorkspaceDirectories(join(fakeHome, "development", "company", "projB"), {
         config,
@@ -185,12 +185,12 @@ describe("workspaceResolver", () => {
       const config = {
         configs: [
           {
-            glob: "/company/*",
-            path: join(fakeHome, "ai", "missing-common"),
+            when: "/company/*",
+            load: join(fakeHome, "ai", "missing-common"),
           },
           {
-            glob: "/company/projB",
-            path: projDir,
+            when: "/company/projB",
+            load: projDir,
           },
         ],
       };
@@ -254,8 +254,8 @@ describe("workspaceResolver", () => {
       const config = {
         configs: [
           {
-            glob: join(testBase, "company", "projB"),
-            path: assetDir,
+            when: join(testBase, "company", "projB"),
+            load: assetDir,
           },
         ],
       };
@@ -263,7 +263,7 @@ describe("workspaceResolver", () => {
       try {
         const matched = resolveMatchedWorkspaceConfigs(worktreeDir, { config });
         expect(matched.length).toBe(1);
-        expect(matched[0]?.directoryPath).toBe(assetDir);
+        expect(matched[0]?.load).toBe(assetDir);
       } finally {
         rmSync(testBase, { recursive: true, force: true });
       }

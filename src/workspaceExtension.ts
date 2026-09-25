@@ -14,7 +14,6 @@ import type {
 import {
   collapseHomeDirectory,
   CONFIG_KEY,
-  findMainRepositoryRoot,
   getWorkspaceResourcePaths,
   parseWorkspaceConfig,
   readPromptFile,
@@ -81,14 +80,12 @@ function formatAssetList(theme: IThemeFormatter, label: string, items: readonly 
 }
 
 function formatConfigBlock(theme: IThemeFormatter, item: IWorkspaceMatchedConfig, homeDirectoryPath?: string): string {
-  const displayGlob = collapseHomeDirectory(item.glob, homeDirectoryPath);
-  const displayPath = collapseHomeDirectory(item.directoryPath, homeDirectoryPath);
+  const displayWhen = collapseHomeDirectory(item.when, homeDirectoryPath);
+  const displayLoad = collapseHomeDirectory(item.load, homeDirectoryPath);
 
   let sectionText = theme.fg("accent", "  config:") + "\n";
-  sectionText += theme.fg("accent", "    glob: ") + theme.fg("dim", displayGlob) + "\n";
-  if (displayPath !== displayGlob) {
-    sectionText += theme.fg("accent", "    path: ") + theme.fg("dim", displayPath) + "\n";
-  }
+  sectionText += theme.fg("accent", "    when: ") + theme.fg("dim", displayWhen) + "\n";
+  sectionText += theme.fg("accent", "    load: ") + theme.fg("dim", displayLoad) + "\n";
 
   let hasContributions = false;
   if (item.promptFileName) {
@@ -123,13 +120,6 @@ export function formatWorkspaceReport(
   let reportText = theme.fg("mdHeading", `[${CONFIG_KEY}]`) + "\n";
   reportText +=
     theme.fg("accent", "  cwd: ") + theme.fg("dim", collapseHomeDirectory(details.cwd, homeDirectoryPath)) + "\n";
-
-  if (details.mainRepositoryRoot && details.mainRepositoryRoot !== details.cwd) {
-    reportText +=
-      theme.fg("accent", "  repository: ") +
-      theme.fg("dim", collapseHomeDirectory(details.mainRepositoryRoot, homeDirectoryPath)) +
-      "\n";
-  }
 
   if (details.configs.length === 0) {
     reportText += theme.fg("dim", "  (no matching workspace config)") + "\n";
@@ -284,12 +274,10 @@ export async function workspaceExtension(pi: ExtensionAPI): Promise<void> {
 
     if (ctx.hasUI) {
       const matchedConfigs = resolveMatchedWorkspaceConfigs(ctx.cwd, { config: effectiveConfig });
-      const mainRepositoryRoot = findMainRepositoryRoot(ctx.cwd);
       pi.sendMessage({
         customType: CONFIG_KEY,
         content: formatWorkspaceReport(ctx.ui.theme, {
           cwd: ctx.cwd,
-          ...(mainRepositoryRoot !== undefined ? { mainRepositoryRoot } : {}),
           configs: matchedConfigs,
         }),
         display: true,

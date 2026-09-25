@@ -10,7 +10,7 @@ import type {
   IWorkspaceResourcePaths,
   IWorkspaceRule,
   IWorkspaceSettings,
-  WorkspaceRulePath,
+  WorkspaceRuleLoad,
 } from "./types.js";
 
 export const CONFIG_KEY = "@alexgorbatchev/pi-workspace";
@@ -45,12 +45,12 @@ export function collapseHomeDirectory(filePath: string, homeDirectoryPath: strin
   return filePath;
 }
 
-function parseRulePath(rawPath: unknown): WorkspaceRulePath | undefined {
-  if (typeof rawPath === "string" && rawPath.trim().length > 0) {
-    return rawPath.trim();
+function parseRuleLoad(rawLoad: unknown): WorkspaceRuleLoad | undefined {
+  if (typeof rawLoad === "string" && rawLoad.trim().length > 0) {
+    return rawLoad.trim();
   }
-  if (Array.isArray(rawPath)) {
-    const validPaths = rawPath
+  if (Array.isArray(rawLoad)) {
+    const validPaths = rawLoad
       .filter((item): item is string => typeof item === "string")
       .map((item) => item.trim())
       .filter((item) => item.length > 0);
@@ -77,12 +77,12 @@ export function parseWorkspaceConfig(settings: unknown): IWorkspaceConfig | unde
   if (Array.isArray(rawConfigs)) {
     for (const entry of rawConfigs) {
       if (typeof entry === "object" && entry !== null) {
-        const rawGlob = Reflect.get(entry, "glob");
-        const rawPath = Reflect.get(entry, "path");
-        if (typeof rawGlob === "string" && rawGlob.trim().length > 0) {
-          const parsedPath = parseRulePath(rawPath);
-          if (parsedPath !== undefined) {
-            rules.push({ glob: rawGlob.trim(), path: parsedPath });
+        const rawWhen = Reflect.get(entry, "when") ?? Reflect.get(entry, "glob");
+        const rawLoad = Reflect.get(entry, "load") ?? Reflect.get(entry, "path");
+        if (typeof rawWhen === "string" && rawWhen.trim().length > 0) {
+          const parsedLoad = parseRuleLoad(rawLoad);
+          if (parsedLoad !== undefined) {
+            rules.push({ when: rawWhen.trim(), load: parsedLoad });
           }
         }
       }
@@ -91,11 +91,11 @@ export function parseWorkspaceConfig(settings: unknown): IWorkspaceConfig | unde
 
   const rawWorkspaces = Reflect.get(rawConfig, "workspaces");
   if (typeof rawWorkspaces === "object" && rawWorkspaces !== null && !Array.isArray(rawWorkspaces)) {
-    for (const [glob, rawPath] of Object.entries(rawWorkspaces)) {
-      if (typeof glob === "string" && glob.trim().length > 0) {
-        const parsedPath = parseRulePath(rawPath);
-        if (parsedPath !== undefined) {
-          rules.push({ glob: glob.trim(), path: parsedPath });
+    for (const [when, rawLoad] of Object.entries(rawWorkspaces)) {
+      if (typeof when === "string" && when.trim().length > 0) {
+        const parsedLoad = parseRuleLoad(rawLoad);
+        if (parsedLoad !== undefined) {
+          rules.push({ when: when.trim(), load: parsedLoad });
         }
       }
     }
@@ -359,14 +359,14 @@ export function resolveMatchedWorkspaceConfigs(
   const matchedList: IWorkspaceMatchedConfig[] = [];
 
   for (const rule of rules) {
-    const isDirectMatch = matchWorkspacePattern(rule.glob, currentWorkingDirectory, options?.homeDirectoryPath);
+    const isDirectMatch = matchWorkspacePattern(rule.when, currentWorkingDirectory, options?.homeDirectoryPath);
     const isWorktreeMatch =
       !isDirectMatch && mainRepositoryRoot !== undefined
-        ? matchWorkspacePattern(rule.glob, mainRepositoryRoot, options?.homeDirectoryPath)
+        ? matchWorkspacePattern(rule.when, mainRepositoryRoot, options?.homeDirectoryPath)
         : false;
 
     if (isDirectMatch || isWorktreeMatch) {
-      const targetPaths = Array.isArray(rule.path) ? rule.path : [rule.path];
+      const targetPaths = Array.isArray(rule.load) ? rule.load : [rule.load];
 
       for (const rawPath of targetPaths) {
         const expanded = expandHomeDirectory(rawPath, options?.homeDirectoryPath);
@@ -374,11 +374,11 @@ export function resolveMatchedWorkspaceConfigs(
 
         if (checkFileExists(resolvedDirectory)) {
           const scan = scanDirectoryAssets(resolvedDirectory, checkFileExists, directoryReader);
-          const alreadyMatched = matchedList.some((m) => m.directoryPath === resolvedDirectory && m.glob === rule.glob);
+          const alreadyMatched = matchedList.some((m) => m.load === resolvedDirectory && m.when === rule.when);
           if (!alreadyMatched) {
             matchedList.push({
-              glob: rule.glob,
-              directoryPath: resolvedDirectory,
+              when: rule.when,
+              load: resolvedDirectory,
               ...(scan.promptFileName !== undefined ? { promptFileName: scan.promptFileName } : {}),
               skillNames: scan.skillNames,
               promptNames: scan.promptNames,
@@ -400,8 +400,8 @@ export function resolveWorkspaceDirectories(
   const matched = resolveMatchedWorkspaceConfigs(currentWorkingDirectory, options);
   const directories: string[] = [];
   for (const item of matched) {
-    if (!directories.includes(item.directoryPath)) {
-      directories.push(item.directoryPath);
+    if (!directories.includes(item.load)) {
+      directories.push(item.load);
     }
   }
   return directories;

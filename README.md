@@ -71,12 +71,12 @@ Configure the mapping in `~/.pi/agent/settings.json`:
   "@alexgorbatchev/pi-workspace": {
     "configs": [
       {
-        "glob": "~/development/company-a/*",
-        "path": "~/.pi/workspaces/company-a/_common"
+        "when": "~/development/company-a/*",
+        "load": "~/.pi/workspaces/company-a/_common"
       },
       {
-        "glob": "~/development/company-a/auth-service",
-        "path": "~/.pi/workspaces/company-a/auth-service"
+        "when": "~/development/company-a/auth-service",
+        "load": "~/.pi/workspaces/company-a/auth-service"
       }
     ]
   }
@@ -96,12 +96,12 @@ Pi displays the attributed workspace summary:
 [@alexgorbatchev/pi-workspace]
   cwd: ~/development/company-a/auth-service
   config:
-    glob: ~/development/company-a/*
-    path: ~/.pi/workspaces/company-a/_common
+    when: ~/development/company-a/*
+    load: ~/.pi/workspaces/company-a/_common
     prompt: APPEND_SYSTEM.md
   config:
-    glob: ~/development/company-a/auth-service
-    path: ~/.pi/workspaces/company-a/auth-service
+    when: ~/development/company-a/auth-service
+    load: ~/.pi/workspaces/company-a/auth-service
     prompt: APPEND_SYSTEM.md
 ```
 
@@ -114,16 +114,16 @@ Configure the extension in `~/.pi/agent/settings.json` under the `"@alexgorbatch
   "@alexgorbatchev/pi-workspace": {
     "configs": [
       {
-        "glob": "~/development/company-a/*",
-        "path": "~/.pi/workspaces/company-a/_common"
+        "when": "~/development/company-a/*",
+        "load": "~/.pi/workspaces/company-a/_common"
       },
       {
-        "glob": "~/development/company-a/auth-service",
-        "path": "~/.pi/workspaces/company-a/auth-service"
+        "when": "~/development/company-a/auth-service",
+        "load": "~/.pi/workspaces/company-a/auth-service"
       },
       {
-        "glob": "~/development/company-b/client-portal",
-        "path": "~/.pi/workspaces/company-b/portal"
+        "when": "~/development/company-b/client-portal",
+        "load": "~/.pi/workspaces/company-b/portal"
       }
     ]
   }
@@ -132,12 +132,12 @@ Configure the extension in `~/.pi/agent/settings.json` under the `"@alexgorbatch
 
 | Option    | Type  | Default | Description                                                                           |
 | :-------- | :---- | :------ | :------------------------------------------------------------------------------------ |
-| `configs` | array | `[]`    | Ordered list of `{ glob, path }` rules pairing checkout patterns with asset locations |
+| `configs` | array | `[]`    | Ordered list of `{ when, load }` rules pairing checkout patterns with asset locations |
 
 Each rule defines:
 
-- `glob`: Checkout directory path or pattern supporting `~` expansion and `*` wildcards.
-- `path`: Absolute or `~`-prefixed path (or array of paths) pointing to where the workspace assets live on disk.
+- `when`: Checkout directory path or pattern supporting `~` expansion and `*` wildcards.
+- `load`: Absolute or `~`-prefixed path (or array of paths) pointing to where the workspace assets live on disk.
 
 All rules matching the current working directory apply in order. Earlier rules provide base layers, while later rules provide project-specific overlays.
 
