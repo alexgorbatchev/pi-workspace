@@ -1,9 +1,22 @@
 {
   "@alexgorbatchev/pi-workspace": {
-    "workspaces": {
-      "~/development/company-b/client-portal": ["./fixtures/workspaces/company-b/portal"],
-      "./fixtures/mock-repos/company-b/client-portal": ["./fixtures/workspaces/company-b/portal"],
-      "~/development/tools/*": ["./fixtures/workspaces/tools/_common", "./fixtures/workspaces/tools/:1"]
-    }
+    "configs": [
+      {
+        "glob": "~/development/tools/*",
+        "path": "./fixtures/workspaces/tools/_common"
+      },
+      {
+        "glob": "~/development/tools/pi-workspace",
+        "path": "./fixtures/workspaces/tools/pi-workspace"
+      },
+      {
+        "glob": "/tmp/company-b/client-portal",
+        "path": "./fixtures/workspaces/company-b/portal"
+      },
+      {
+        "glob": "~/development/company-b/client-portal",
+        "path": "./fixtures/workspaces/company-b/portal"
+      }
+    ]
   }
 }

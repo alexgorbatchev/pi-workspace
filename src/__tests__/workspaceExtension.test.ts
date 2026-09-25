@@ -47,22 +47,25 @@ describe("workspaceExtension", () => {
       fg: (_color: string, text: string) => text,
     };
 
-    it("formats full workspace status report with attribution by tier and sorted sub-bullets", () => {
+    it("formats full workspace status report with cwd and config blocks", () => {
       const report = formatWorkspaceReport(
         mockTheme,
         {
-          workspaces: [
+          cwd: "/home/development/company-a/auth-service",
+          configs: [
             {
+              glob: "~/development/company-a/*",
               directoryPath: "/home/.pi/workspaces/company-a/_common",
               promptFileName: "APPEND_SYSTEM.md",
               skillNames: ["company-auth"],
-              promptNames: ["org-audit", "jira-check"],
+              promptNames: ["jira-check", "org-audit"],
               extensionFileNames: ["telemetry.ts"],
             },
             {
+              glob: "~/development/company-a/auth-service",
               directoryPath: "/home/.pi/workspaces/company-a/auth-service",
               promptFileName: "APPEND_SYSTEM.md",
-              skillNames: ["beta-skill", "alpha-skill"],
+              skillNames: ["alpha-skill", "beta-skill"],
               promptNames: ["proj-check"],
               extensionFileNames: [],
             },
@@ -72,12 +75,16 @@ describe("workspaceExtension", () => {
       );
 
       expect(report).toContain("[@alexgorbatchev/pi-workspace]");
-      expect(report).toContain("workspace: ~/.pi/workspaces/company-a/_common");
-      expect(report).toContain("    prompt: APPEND_SYSTEM.md");
+      expect(report).toContain("cwd: ~/development/company-a/auth-service");
+      expect(report).toContain("config:");
+      expect(report).toContain("glob: ~/development/company-a/*");
+      expect(report).toContain("path: ~/.pi/workspaces/company-a/_common");
+      expect(report).toContain("prompt: APPEND_SYSTEM.md");
       expect(report).toContain("    skills:\n      - company-auth");
       expect(report).toContain("    commands:\n      - jira-check\n      - org-audit");
       expect(report).toContain("    extensions:\n      - telemetry.ts");
-      expect(report).toContain("workspace: ~/.pi/workspaces/company-a/auth-service");
+      expect(report).toContain("glob: ~/development/company-a/auth-service");
+      expect(report).toContain("path: ~/.pi/workspaces/company-a/auth-service");
       expect(report).toContain("    skills:\n      - alpha-skill\n      - beta-skill");
       expect(report).toContain("    commands:\n      - proj-check");
     });
@@ -86,8 +93,10 @@ describe("workspaceExtension", () => {
       const report = formatWorkspaceReport(
         mockTheme,
         {
-          workspaces: [
+          cwd: "/home/development/company-b/portal",
+          configs: [
             {
+              glob: "/company-b/portal",
               directoryPath: "/home/.pi/workspaces/company-b/portal",
               skillNames: [],
               promptNames: [],
@@ -99,13 +108,16 @@ describe("workspaceExtension", () => {
       );
 
       expect(report).toContain("[@alexgorbatchev/pi-workspace]");
-      expect(report).toContain("workspace: ~/.pi/workspaces/company-b/portal");
+      expect(report).toContain("cwd: ~/development/company-b/portal");
+      expect(report).toContain("config:");
+      expect(report).toContain("glob: /company-b/portal");
+      expect(report).toContain("path: ~/.pi/workspaces/company-b/portal");
       expect(report).toContain("(no assets configured)");
     });
 
     it("formats empty report when no workspaces matched", () => {
-      const report = formatWorkspaceReport(mockTheme, { workspaces: [] }, "/home");
-      expect(report).toContain("(no workspace matched)");
+      const report = formatWorkspaceReport(mockTheme, { cwd: "/home/development/unmatched", configs: [] }, "/home");
+      expect(report).toContain("(no matching workspace config)");
     });
   });
 

@@ -6,10 +6,11 @@ import type {
   FileExistsFn,
   FileReaderFn,
   IWorkspaceConfig,
-  IWorkspaceDirectoryAssets,
+  IWorkspaceMatchedConfig,
   IWorkspaceResourcePaths,
+  IWorkspaceRule,
   IWorkspaceSettings,
-  WorkspaceMappings,
+  WorkspaceRulePath,
 } from "./types.js";
 
 export const CONFIG_KEY = "@alexgorbatchev/pi-workspace";
@@ -20,12 +21,7 @@ export interface IWorkspaceResolverOptions {
   readonly config?: IWorkspaceConfig | undefined;
   readonly homeDirectoryPath?: string | undefined;
   readonly fileExists?: FileExistsFn | undefined;
-}
-
-export interface IPatternMatch {
-  readonly isMatch: boolean;
-  readonly captures: readonly string[];
-  readonly namedCaptures: Record<string, string>;
+  readonly directoryReader?: DirectoryReaderFn | undefined;
 }
 
 export function expandHomeDirectory(filePath: string, homeDirectoryPath: string = homedir()): string {
@@ -49,6 +45,22 @@ export function collapseHomeDirectory(filePath: string, homeDirectoryPath: strin
   return filePath;
 }
 
+function parseRulePath(rawPath: unknown): WorkspaceRulePath | undefined {
+  if (typeof rawPath === "string" && rawPath.trim().length > 0) {
+    return rawPath.trim();
+  }
+  if (Array.isArray(rawPath)) {
+    const validPaths = rawPath
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    if (validPaths.length > 0) {
+      return validPaths;
+    }
+  }
+  return undefined;
+}
+
 export function parseWorkspaceConfig(settings: unknown): IWorkspaceConfig | undefined {
   if (typeof settings !== "object" || settings === null) {
     return undefined;
@@ -59,31 +71,41 @@ export function parseWorkspaceConfig(settings: unknown): IWorkspaceConfig | unde
     return undefined;
   }
 
-  const rawWorkspaces = Reflect.get(rawConfig, "workspaces");
-  if (typeof rawWorkspaces !== "object" || rawWorkspaces === null || Array.isArray(rawWorkspaces)) {
-    return undefined;
-  }
+  const rules: IWorkspaceRule[] = [];
 
-  const workspaces: WorkspaceMappings = {};
-  for (const [pattern, target] of Object.entries(rawWorkspaces)) {
-    if (typeof target === "string" && target.trim().length > 0) {
-      workspaces[pattern.trim()] = target.trim();
-    } else if (Array.isArray(target)) {
-      const validTargets = target
-        .filter((item): item is string => typeof item === "string")
-        .map((item) => item.trim())
-        .filter((item) => item.length > 0);
-      if (validTargets.length > 0) {
-        workspaces[pattern.trim()] = validTargets;
+  const rawConfigs = Reflect.get(rawConfig, "configs");
+  if (Array.isArray(rawConfigs)) {
+    for (const entry of rawConfigs) {
+      if (typeof entry === "object" && entry !== null) {
+        const rawGlob = Reflect.get(entry, "glob");
+        const rawPath = Reflect.get(entry, "path");
+        if (typeof rawGlob === "string" && rawGlob.trim().length > 0) {
+          const parsedPath = parseRulePath(rawPath);
+          if (parsedPath !== undefined) {
+            rules.push({ glob: rawGlob.trim(), path: parsedPath });
+          }
+        }
       }
     }
   }
 
-  if (Object.keys(workspaces).length === 0) {
+  const rawWorkspaces = Reflect.get(rawConfig, "workspaces");
+  if (typeof rawWorkspaces === "object" && rawWorkspaces !== null && !Array.isArray(rawWorkspaces)) {
+    for (const [glob, rawPath] of Object.entries(rawWorkspaces)) {
+      if (typeof glob === "string" && glob.trim().length > 0) {
+        const parsedPath = parseRulePath(rawPath);
+        if (parsedPath !== undefined) {
+          rules.push({ glob: glob.trim(), path: parsedPath });
+        }
+      }
+    }
+  }
+
+  if (rules.length === 0) {
     return undefined;
   }
 
-  return { workspaces };
+  return { configs: rules };
 }
 
 function normalizePathSegments(inputPath: string, homeDirectoryPath?: string): string[] {
@@ -92,106 +114,27 @@ function normalizePathSegments(inputPath: string, homeDirectoryPath?: string): s
   return resolved.split(/[/\\]+/).filter((segment) => segment.length > 0 && segment !== ".");
 }
 
-export function matchWorkspacePattern(
-  pattern: string,
-  targetDirectory: string,
-  homeDirectoryPath?: string,
-): IPatternMatch {
+export function matchWorkspacePattern(pattern: string, targetDirectory: string, homeDirectoryPath?: string): boolean {
   const patternSegments = normalizePathSegments(pattern, homeDirectoryPath);
   const targetSegments = normalizePathSegments(targetDirectory, homeDirectoryPath);
 
   if (targetSegments.length < patternSegments.length) {
-    return { isMatch: false, captures: [], namedCaptures: {} };
+    return false;
   }
-
-  const captures: string[] = [];
-  const namedCaptures: Record<string, string> = {};
 
   for (let i = 0; i < patternSegments.length; i++) {
     const patternSegment = patternSegments[i] ?? "";
     const targetSegment = targetSegments[i] ?? "";
 
     if (patternSegment === "*") {
-      captures.push(targetSegment);
-    } else if (patternSegment.startsWith(":") && patternSegment.length > 1) {
-      const paramName = patternSegment.slice(1);
-      captures.push(targetSegment);
-      namedCaptures[paramName] = targetSegment;
-    } else if (patternSegment.toLowerCase() !== targetSegment.toLowerCase()) {
-      return { isMatch: false, captures: [], namedCaptures: {} };
+      continue;
+    }
+    if (patternSegment.toLowerCase() !== targetSegment.toLowerCase()) {
+      return false;
     }
   }
 
-  return {
-    isMatch: true,
-    captures,
-    namedCaptures,
-  };
-}
-
-export function interpolateTargetTemplate(template: string, match: IPatternMatch): string {
-  let result = template;
-
-  for (let i = 0; i < match.captures.length; i++) {
-    const captureValue = match.captures[i] ?? "";
-    const numericPlaceholder = `:${i + 1}`;
-    const dollarPlaceholder = `$${i + 1}`;
-    result = result.replaceAll(numericPlaceholder, captureValue).replaceAll(dollarPlaceholder, captureValue);
-  }
-
-  for (const [name, value] of Object.entries(match.namedCaptures)) {
-    result = result.replaceAll(`:${name}`, value);
-  }
-
-  return result;
-}
-
-function sortPatternsBySpecificity(patterns: readonly string[]): string[] {
-  return [...patterns].sort((firstPattern, secondPattern) => {
-    const firstHasWildcard = firstPattern.includes("*") || firstPattern.includes(":");
-    const secondHasWildcard = secondPattern.includes("*") || secondPattern.includes(":");
-
-    if (!firstHasWildcard && secondHasWildcard) return -1;
-    if (firstHasWildcard && !secondHasWildcard) return 1;
-
-    return secondPattern.length - firstPattern.length;
-  });
-}
-
-export function resolveWorkspaceDirectories(
-  currentWorkingDirectory: string,
-  options?: IWorkspaceResolverOptions,
-): string[] {
-  const workspacesConfig = options?.config?.workspaces;
-  if (!workspacesConfig || Object.keys(workspacesConfig).length === 0) {
-    return [];
-  }
-
-  const checkFileExists = options?.fileExists ?? existsSync;
-  const sortedPatterns = sortPatternsBySpecificity(Object.keys(workspacesConfig));
-
-  for (const pattern of sortedPatterns) {
-    const match = matchWorkspacePattern(pattern, currentWorkingDirectory, options?.homeDirectoryPath);
-    if (match.isMatch) {
-      const rawTargets = workspacesConfig[pattern];
-      const targetTemplates = Array.isArray(rawTargets) ? rawTargets : rawTargets ? [rawTargets] : [];
-
-      const resolvedDirectories: string[] = [];
-      for (const template of targetTemplates) {
-        const interpolated = interpolateTargetTemplate(template, match);
-        const expanded = expandHomeDirectory(interpolated, options?.homeDirectoryPath);
-        const resolvedPath = resolve(expanded);
-
-        if (checkFileExists(resolvedPath) && !resolvedDirectories.includes(resolvedPath)) {
-          resolvedDirectories.push(resolvedPath);
-        }
-      }
-
-      return resolvedDirectories;
-    }
-  }
-
-  return [];
+  return true;
 }
 
 export function findPromptFile(directoryPath: string, checkFileExists: FileExistsFn = existsSync): string | null {
@@ -281,11 +224,18 @@ export function readSettingsFile(
   }
 }
 
-export function getDirectoryAssets(
+export interface IDirectoryAssetScan {
+  readonly promptFileName?: string | undefined;
+  readonly skillNames: string[];
+  readonly promptNames: string[];
+  readonly extensionFileNames: string[];
+}
+
+export function scanDirectoryAssets(
   directoryPath: string,
   checkFileExists: FileExistsFn = existsSync,
   directoryReader: DirectoryReaderFn = (dirPath) => readdirSync(dirPath),
-): IWorkspaceDirectoryAssets {
+): IDirectoryAssetScan {
   const promptPath = findPromptFile(directoryPath, checkFileExists);
   const promptFileName = promptPath ? basename(promptPath) : undefined;
 
@@ -347,12 +297,64 @@ export function getDirectoryAssets(
   }
 
   return {
-    directoryPath,
     ...(promptFileName !== undefined ? { promptFileName } : {}),
     skillNames,
     promptNames,
     extensionFileNames,
   };
+}
+
+export function resolveMatchedWorkspaceConfigs(
+  currentWorkingDirectory: string,
+  options?: IWorkspaceResolverOptions,
+): IWorkspaceMatchedConfig[] {
+  const rules = options?.config?.configs;
+  if (!rules || rules.length === 0) {
+    return [];
+  }
+
+  const checkFileExists = options?.fileExists ?? existsSync;
+  const directoryReader = options?.directoryReader ?? readdirSync;
+  const matchedList: IWorkspaceMatchedConfig[] = [];
+
+  for (const rule of rules) {
+    if (matchWorkspacePattern(rule.glob, currentWorkingDirectory, options?.homeDirectoryPath)) {
+      const targetPaths = Array.isArray(rule.path) ? rule.path : [rule.path];
+
+      for (const rawPath of targetPaths) {
+        const expanded = expandHomeDirectory(rawPath, options?.homeDirectoryPath);
+        const resolvedDirectory = resolve(expanded);
+
+        if (checkFileExists(resolvedDirectory)) {
+          const scan = scanDirectoryAssets(resolvedDirectory, checkFileExists, directoryReader);
+          matchedList.push({
+            glob: rule.glob,
+            directoryPath: resolvedDirectory,
+            ...(scan.promptFileName !== undefined ? { promptFileName: scan.promptFileName } : {}),
+            skillNames: scan.skillNames,
+            promptNames: scan.promptNames,
+            extensionFileNames: scan.extensionFileNames,
+          });
+        }
+      }
+    }
+  }
+
+  return matchedList;
+}
+
+export function resolveWorkspaceDirectories(
+  currentWorkingDirectory: string,
+  options?: IWorkspaceResolverOptions,
+): string[] {
+  const matched = resolveMatchedWorkspaceConfigs(currentWorkingDirectory, options);
+  const directories: string[] = [];
+  for (const item of matched) {
+    if (!directories.includes(item.directoryPath)) {
+      directories.push(item.directoryPath);
+    }
+  }
+  return directories;
 }
 
 export function getWorkspaceResourcePaths(

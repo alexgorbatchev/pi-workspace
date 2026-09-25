@@ -7,18 +7,18 @@ import type {
   ISettingsContext,
   IThemeFormatter,
   IWorkspaceConfig,
-  IWorkspaceDirectoryAssets,
+  IWorkspaceMatchedConfig,
   IWorkspaceReportDetails,
   IWorkspaceSettings,
 } from "./types.js";
 import {
   collapseHomeDirectory,
   CONFIG_KEY,
-  getDirectoryAssets,
   getWorkspaceResourcePaths,
   parseWorkspaceConfig,
   readPromptFile,
   readSettingsFile,
+  resolveMatchedWorkspaceConfigs,
   resolveWorkspaceDirectories,
 } from "./workspaceResolver.js";
 
@@ -55,11 +55,10 @@ export function loadEffectiveConfig(cwd: string): IWorkspaceConfig | undefined {
       return undefined;
     }
 
+    const mergedConfigs = [...(globalConfig?.configs ?? []), ...(projectConfig?.configs ?? [])];
+
     return {
-      workspaces: {
-        ...globalConfig?.workspaces,
-        ...projectConfig?.workspaces,
-      },
+      configs: mergedConfigs,
     };
   } catch (error) {
     console.error("[pi-workspace] Failed to load workspace configuration:", error);
@@ -80,29 +79,31 @@ function formatAssetList(theme: IThemeFormatter, label: string, items: readonly 
   return result;
 }
 
-function formatWorkspaceSection(
-  theme: IThemeFormatter,
-  workspace: IWorkspaceDirectoryAssets,
-  homeDirectoryPath?: string,
-): string {
-  const displayPath = collapseHomeDirectory(workspace.directoryPath, homeDirectoryPath);
-  let sectionText = theme.fg("accent", "  workspace: ") + theme.fg("dim", displayPath) + "\n";
+function formatConfigBlock(theme: IThemeFormatter, item: IWorkspaceMatchedConfig, homeDirectoryPath?: string): string {
+  const displayGlob = collapseHomeDirectory(item.glob, homeDirectoryPath);
+  const displayPath = collapseHomeDirectory(item.directoryPath, homeDirectoryPath);
+
+  let sectionText = theme.fg("accent", "  config:") + "\n";
+  sectionText += theme.fg("accent", "    glob: ") + theme.fg("dim", displayGlob) + "\n";
+  if (displayPath !== displayGlob) {
+    sectionText += theme.fg("accent", "    path: ") + theme.fg("dim", displayPath) + "\n";
+  }
 
   let hasContributions = false;
-  if (workspace.promptFileName) {
-    sectionText += theme.fg("accent", "    prompt: ") + theme.fg("dim", workspace.promptFileName) + "\n";
+  if (item.promptFileName) {
+    sectionText += theme.fg("accent", "    prompt: ") + theme.fg("dim", item.promptFileName) + "\n";
     hasContributions = true;
   }
-  if (workspace.skillNames.length > 0) {
-    sectionText += formatAssetList(theme, "skills", workspace.skillNames);
+  if (item.skillNames.length > 0) {
+    sectionText += formatAssetList(theme, "skills", item.skillNames);
     hasContributions = true;
   }
-  if (workspace.promptNames.length > 0) {
-    sectionText += formatAssetList(theme, "commands", workspace.promptNames);
+  if (item.promptNames.length > 0) {
+    sectionText += formatAssetList(theme, "commands", item.promptNames);
     hasContributions = true;
   }
-  if (workspace.extensionFileNames.length > 0) {
-    sectionText += formatAssetList(theme, "extensions", workspace.extensionFileNames);
+  if (item.extensionFileNames.length > 0) {
+    sectionText += formatAssetList(theme, "extensions", item.extensionFileNames);
     hasContributions = true;
   }
 
@@ -119,14 +120,16 @@ export function formatWorkspaceReport(
   homeDirectoryPath?: string,
 ): string {
   let reportText = theme.fg("mdHeading", `[${CONFIG_KEY}]`) + "\n";
+  reportText +=
+    theme.fg("accent", "  cwd: ") + theme.fg("dim", collapseHomeDirectory(details.cwd, homeDirectoryPath)) + "\n";
 
-  if (details.workspaces.length === 0) {
-    reportText += theme.fg("dim", "  (no workspace matched)") + "\n";
+  if (details.configs.length === 0) {
+    reportText += theme.fg("dim", "  (no matching workspace config)") + "\n";
     return reportText.trimEnd();
   }
 
-  for (const workspace of details.workspaces) {
-    reportText += formatWorkspaceSection(theme, workspace, homeDirectoryPath);
+  for (const item of details.configs) {
+    reportText += formatConfigBlock(theme, item, homeDirectoryPath);
   }
 
   return reportText.trimEnd();
@@ -204,16 +207,6 @@ export function buildSystemPromptAppend(directories: readonly string[]): string 
   return promptSections.join("");
 }
 
-function buildReportDetails(directories: readonly string[]): IWorkspaceReportDetails {
-  const workspaces: IWorkspaceDirectoryAssets[] = [];
-
-  for (const directoryPath of directories) {
-    workspaces.push(getDirectoryAssets(directoryPath));
-  }
-
-  return { workspaces };
-}
-
 export async function workspaceExtension(pi: ExtensionAPI): Promise<void> {
   const initialCurrentDirectory = process.cwd();
   const initialConfig = loadEffectiveConfig(initialCurrentDirectory);
@@ -282,10 +275,10 @@ export async function workspaceExtension(pi: ExtensionAPI): Promise<void> {
     await applyWorkspaceSettings(pi, ctx, settingsToApply);
 
     if (ctx.hasUI) {
-      const reportDetails = buildReportDetails(currentDirectories);
+      const matchedConfigs = resolveMatchedWorkspaceConfigs(ctx.cwd, { config: effectiveConfig });
       pi.sendMessage({
         customType: CONFIG_KEY,
-        content: formatWorkspaceReport(ctx.ui.theme, reportDetails),
+        content: formatWorkspaceReport(ctx.ui.theme, { cwd: ctx.cwd, configs: matchedConfigs }),
         display: true,
       });
     }

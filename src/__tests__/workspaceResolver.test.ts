@@ -4,14 +4,14 @@ import {
   collapseHomeDirectory,
   expandHomeDirectory,
   findPromptFile,
-  getDirectoryAssets,
   getWorkspaceResourcePaths,
-  interpolateTargetTemplate,
   matchWorkspacePattern,
   parseWorkspaceConfig,
   readPromptFile,
   readSettingsFile,
+  resolveMatchedWorkspaceConfigs,
   resolveWorkspaceDirectories,
+  scanDirectoryAssets,
 } from "../workspaceResolver.js";
 
 describe("workspaceResolver", () => {
@@ -48,162 +48,156 @@ describe("workspaceResolver", () => {
     it("returns undefined when config key is absent or empty", () => {
       expect(parseWorkspaceConfig({ "some-other-plugin": {} })).toBeUndefined();
       expect(parseWorkspaceConfig({ "@alexgorbatchev/pi-workspace": {} })).toBeUndefined();
-      expect(parseWorkspaceConfig({ "@alexgorbatchev/pi-workspace": { workspaces: {} } })).toBeUndefined();
+      expect(parseWorkspaceConfig({ "@alexgorbatchev/pi-workspace": { configs: [] } })).toBeUndefined();
     });
 
-    it("parses valid workspaces map with string arrays and single strings", () => {
+    it("parses valid configs array with string paths and array paths", () => {
+      const settings = {
+        "@alexgorbatchev/pi-workspace": {
+          configs: [
+            {
+              glob: "/company/*",
+              path: "/company/ai/commonA",
+            },
+            {
+              glob: "/company/projB",
+              path: ["/company/ai/projB", "/company/ai/projB-overrides"],
+            },
+          ],
+        },
+      };
+
+      const parsed = parseWorkspaceConfig(settings);
+      expect(parsed).toEqual({
+        configs: [
+          {
+            glob: "/company/*",
+            path: "/company/ai/commonA",
+          },
+          {
+            glob: "/company/projB",
+            path: ["/company/ai/projB", "/company/ai/projB-overrides"],
+          },
+        ],
+      });
+    });
+
+    it("parses legacy workspaces map into configs array", () => {
       const settings = {
         "@alexgorbatchev/pi-workspace": {
           workspaces: {
-            "~/development/company-a/*": ["~/.pi/workspaces/company-a/_common", "~/.pi/workspaces/company-a/:1"],
-            "~/development/company-b/portal": "~/.pi/workspaces/company-b/portal",
+            "/company/*": "/company/ai/commonA",
           },
         },
       };
 
       const parsed = parseWorkspaceConfig(settings);
       expect(parsed).toEqual({
-        workspaces: {
-          "~/development/company-a/*": ["~/.pi/workspaces/company-a/_common", "~/.pi/workspaces/company-a/:1"],
-          "~/development/company-b/portal": "~/.pi/workspaces/company-b/portal",
-        },
+        configs: [
+          {
+            glob: "/company/*",
+            path: "/company/ai/commonA",
+          },
+        ],
       });
     });
   });
 
-  describe("matchWorkspacePattern and interpolateTargetTemplate", () => {
-    it("matches exact paths", () => {
-      const match = matchWorkspacePattern(
-        "~/development/company-b/portal",
-        "/test/home/development/company-b/portal",
-        fakeHome,
-      );
-
-      expect(match.isMatch).toBe(true);
-      expect(match.captures).toEqual([]);
+  describe("matchWorkspacePattern", () => {
+    it("matches exact directory path", () => {
+      expect(matchWorkspacePattern("/company/projB", "/company/projB", fakeHome)).toBe(true);
     });
 
-    it("matches wildcard * with numeric captures", () => {
-      const match = matchWorkspacePattern(
-        "~/development/company-a/*",
-        "/test/home/development/company-a/billing",
-        fakeHome,
-      );
-
-      expect(match.isMatch).toBe(true);
-      expect(match.captures).toEqual(["billing"]);
+    it("matches subdirectories inside matched directory", () => {
+      expect(matchWorkspacePattern("/company/projB", "/company/projB/src/components", fakeHome)).toBe(true);
     });
 
-    it("matches subdirectories inside matched project", () => {
-      const match = matchWorkspacePattern(
-        "~/development/company-a/*",
-        "/test/home/development/company-a/billing/src/components",
-        fakeHome,
-      );
-
-      expect(match.isMatch).toBe(true);
-      expect(match.captures).toEqual(["billing"]);
+    it("matches wildcard * with directory names", () => {
+      expect(matchWorkspacePattern("/company/*", "/company/projB", fakeHome)).toBe(true);
+      expect(matchWorkspacePattern("/company/*", "/company/projB/src/index.ts", fakeHome)).toBe(true);
     });
 
-    it("matches named parameters", () => {
-      const match = matchWorkspacePattern(
-        "~/development/:org/:project",
-        "/test/home/development/acme/dashboard",
-        fakeHome,
-      );
-
-      expect(match.isMatch).toBe(true);
-      expect(match.captures).toEqual(["acme", "dashboard"]);
-      expect(match.namedCaptures).toEqual({ org: "acme", project: "dashboard" });
+    it("returns false when path does not match", () => {
+      expect(matchWorkspacePattern("/company/*", "/other/projB", fakeHome)).toBe(false);
+      expect(matchWorkspacePattern("/company/projB", "/company/projC", fakeHome)).toBe(false);
+      expect(matchWorkspacePattern("/company/projB", "/company", fakeHome)).toBe(false);
     });
 
-    it("returns false when paths do not match", () => {
-      const match = matchWorkspacePattern(
-        "~/development/company-a/*",
-        "/test/home/development/company-b/billing",
-        fakeHome,
-      );
-
-      expect(match.isMatch).toBe(false);
-    });
-
-    it("interpolates numeric and named target templates", () => {
-      const match = {
-        isMatch: true,
-        captures: ["company-a", "billing"],
-        namedCaptures: { org: "company-a", project: "billing" },
-      };
-
-      expect(interpolateTargetTemplate("~/.pi/workspaces/:1/:2", match)).toBe("~/.pi/workspaces/company-a/billing");
-      expect(interpolateTargetTemplate("~/.pi/workspaces/$1/$2", match)).toBe("~/.pi/workspaces/company-a/billing");
-      expect(interpolateTargetTemplate("~/.pi/workspaces/:org/:project", match)).toBe(
-        "~/.pi/workspaces/company-a/billing",
-      );
+    it("expands tildes when matching", () => {
+      expect(
+        matchWorkspacePattern("~/development/company/*", "/test/home/development/company/auth-service", fakeHome),
+      ).toBe(true);
     });
   });
 
-  describe("resolveWorkspaceDirectories", () => {
+  describe("resolveMatchedWorkspaceConfigs and resolveWorkspaceDirectories", () => {
     it("returns empty array when no config provided", () => {
+      expect(resolveMatchedWorkspaceConfigs("/any/path")).toEqual([]);
       expect(resolveWorkspaceDirectories("/any/path")).toEqual([]);
     });
 
-    it("resolves existing workspace directories in layer order", () => {
+    it("matches multiple cascading rules (broad org rule AND exact project rule)", () => {
+      const orgDir = join(fakeHome, "ai", "commonA");
+      const projDir = join(fakeHome, "ai", "projB");
+      const existingPaths = new Set([orgDir, projDir]);
+
       const config = {
-        workspaces: {
-          "~/development/company-a/*": ["~/.pi/workspaces/company-a/_common", "~/.pi/workspaces/company-a/:1"],
-        },
+        configs: [
+          {
+            glob: "~/development/company/*",
+            path: "~/ai/commonA",
+          },
+          {
+            glob: "~/development/company/projB",
+            path: "~/ai/projB",
+          },
+        ],
       };
 
-      const orgCommon = join(fakeHome, ".pi", "workspaces", "company-a", "_common");
-      const projectDir = join(fakeHome, ".pi", "workspaces", "company-a", "billing");
-      const existingPaths = new Set([orgCommon, projectDir]);
-
-      const resolved = resolveWorkspaceDirectories(join(fakeHome, "development", "company-a", "billing"), {
+      const matched = resolveMatchedWorkspaceConfigs(join(fakeHome, "development", "company", "projB"), {
         config,
         homeDirectoryPath: fakeHome,
         fileExists: (p) => existingPaths.has(p),
       });
 
-      expect(resolved).toEqual([orgCommon, projectDir]);
+      expect(matched.length).toBe(2);
+      expect(matched[0]?.glob).toBe("~/development/company/*");
+      expect(matched[0]?.directoryPath).toBe(orgDir);
+      expect(matched[1]?.glob).toBe("~/development/company/projB");
+      expect(matched[1]?.directoryPath).toBe(projDir);
+
+      const directories = resolveWorkspaceDirectories(join(fakeHome, "development", "company", "projB"), {
+        config,
+        homeDirectoryPath: fakeHome,
+        fileExists: (p) => existingPaths.has(p),
+      });
+
+      expect(directories).toEqual([orgDir, projDir]);
     });
 
     it("skips directories that do not exist on disk", () => {
+      const projDir = join(fakeHome, "ai", "projB");
+      const existingPaths = new Set([projDir]);
+
       const config = {
-        workspaces: {
-          "~/development/company-a/*": ["~/.pi/workspaces/company-a/_common", "~/.pi/workspaces/company-a/:1"],
-        },
+        configs: [
+          {
+            glob: "/company/*",
+            path: join(fakeHome, "ai", "missing-common"),
+          },
+          {
+            glob: "/company/projB",
+            path: projDir,
+          },
+        ],
       };
 
-      const projectDir = join(fakeHome, ".pi", "workspaces", "company-a", "billing");
-      const existingPaths = new Set([projectDir]);
-
-      const resolved = resolveWorkspaceDirectories(join(fakeHome, "development", "company-a", "billing"), {
+      const directories = resolveWorkspaceDirectories("/company/projB", {
         config,
-        homeDirectoryPath: fakeHome,
         fileExists: (p) => existingPaths.has(p),
       });
 
-      expect(resolved).toEqual([projectDir]);
-    });
-
-    it("prioritizes exact pattern match over wildcard pattern match", () => {
-      const config = {
-        workspaces: {
-          "~/development/company-a/*": ["~/.pi/workspaces/wildcard"],
-          "~/development/company-a/special": ["~/.pi/workspaces/exact"],
-        },
-      };
-
-      const exactDir = join(fakeHome, ".pi", "workspaces", "exact");
-      const existingPaths = new Set([exactDir]);
-
-      const resolved = resolveWorkspaceDirectories(join(fakeHome, "development", "company-a", "special"), {
-        config,
-        homeDirectoryPath: fakeHome,
-        fileExists: (p) => existingPaths.has(p),
-      });
-
-      expect(resolved).toEqual([exactDir]);
+      expect(directories).toEqual([projDir]);
     });
   });
 
@@ -286,7 +280,7 @@ describe("workspaceResolver", () => {
     });
   });
 
-  describe("getDirectoryAssets", () => {
+  describe("scanDirectoryAssets", () => {
     it("extracts prompt file name, skill names, prompt command names, and extension file names", () => {
       const workspaceDir = "/workspaces/company/_common";
       const existingPaths = new Set([
@@ -303,13 +297,12 @@ describe("workspaceResolver", () => {
         [join(workspaceDir, "extensions"), ["auth.ts", "auth.test.ts", "types.d.ts"]],
       ]);
 
-      const assets = getDirectoryAssets(
+      const assets = scanDirectoryAssets(
         workspaceDir,
         (p) => existingPaths.has(p),
         (p) => dirContents.get(p) ?? [],
       );
 
-      expect(assets.directoryPath).toBe(workspaceDir);
       expect(assets.promptFileName).toBe("APPEND_SYSTEM.md");
       expect(assets.skillNames).toEqual(["security-audit", "deploy-check"]);
       expect(assets.promptNames).toEqual(["review", "compliance"]);

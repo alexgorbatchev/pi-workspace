@@ -68,9 +68,16 @@ Configure the mapping in `~/.pi/agent/settings.json`:
 ```json
 {
   "@alexgorbatchev/pi-workspace": {
-    "workspaces": {
-      "~/development/company-a/*": ["~/.pi/workspaces/company-a/_common", "~/.pi/workspaces/company-a/:1"]
-    }
+    "configs": [
+      {
+        "glob": "~/development/company-a/*",
+        "path": "~/.pi/workspaces/company-a/_common"
+      },
+      {
+        "glob": "~/development/company-a/auth-service",
+        "path": "~/.pi/workspaces/company-a/auth-service"
+      }
+    ]
   }
 }
 ```
@@ -86,9 +93,14 @@ Pi displays the attributed workspace summary:
 
 ```text
 [@alexgorbatchev/pi-workspace]
-  workspace: ~/.pi/workspaces/company-a/_common
+  cwd: ~/development/company-a/auth-service
+  config:
+    glob: ~/development/company-a/*
+    path: ~/.pi/workspaces/company-a/_common
     prompt: APPEND_SYSTEM.md
-  workspace: ~/.pi/workspaces/company-a/auth-service
+  config:
+    glob: ~/development/company-a/auth-service
+    path: ~/.pi/workspaces/company-a/auth-service
     prompt: APPEND_SYSTEM.md
 ```
 
@@ -99,19 +111,34 @@ Configure the extension in `~/.pi/agent/settings.json` under the `"@alexgorbatch
 ```json
 {
   "@alexgorbatchev/pi-workspace": {
-    "workspaces": {
-      "~/development/company-a/*": ["~/.pi/workspaces/company-a/_common", "~/.pi/workspaces/company-a/:1"],
-      "~/development/company-b/client-portal": ["~/.pi/workspaces/company-b/portal"]
-    }
+    "configs": [
+      {
+        "glob": "~/development/company-a/*",
+        "path": "~/.pi/workspaces/company-a/_common"
+      },
+      {
+        "glob": "~/development/company-a/auth-service",
+        "path": "~/.pi/workspaces/company-a/auth-service"
+      },
+      {
+        "glob": "~/development/company-b/client-portal",
+        "path": "~/.pi/workspaces/company-b/portal"
+      }
+    ]
   }
 }
 ```
 
-| Option       | Type   | Default | Description                                                             |
-| :----------- | :----- | :------ | :---------------------------------------------------------------------- |
-| `workspaces` | object | `{}`    | Map of checkout path patterns to ordered lists of workspace directories |
+| Option    | Type  | Default | Description                                                                           |
+| :-------- | :---- | :------ | :------------------------------------------------------------------------------------ |
+| `configs` | array | `[]`    | Ordered list of `{ glob, path }` rules pairing checkout patterns with asset locations |
 
-Each key is a path pattern supporting `~` expansion and `*` or `:name` wildcards. Each value is an array of directory paths (or single string path) supporting `:1`, `:2` (or `$1`, `$2`) and `:name` replacements.
+Each rule defines:
+
+- `glob`: Checkout directory path or pattern supporting `~` expansion and `*` wildcards.
+- `path`: Absolute or `~`-prefixed path (or array of paths) pointing to where the workspace assets live on disk.
+
+All rules matching the current working directory apply in order. Earlier rules provide base layers, while later rules provide project-specific overlays.
 
 # Local Testing
 

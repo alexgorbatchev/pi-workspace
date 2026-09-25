@@ -28,11 +28,18 @@ export interface ISettingsContext {
   readonly modelRegistry: IModelRegistryLookup;
 }
 
-export type WorkspaceTargetDefinition = string[] | string;
-export type WorkspaceMappings = Record<string, WorkspaceTargetDefinition>;
+export type WorkspaceRulePath = string | readonly string[];
+
+export interface IWorkspaceRule {
+  readonly glob: string;
+  readonly path: WorkspaceRulePath;
+}
+
+export type LegacyWorkspaceMappings = Record<string, WorkspaceRulePath>;
 
 export interface IWorkspaceConfig {
-  readonly workspaces?: WorkspaceMappings | undefined;
+  readonly configs?: readonly IWorkspaceRule[] | undefined;
+  readonly workspaces?: LegacyWorkspaceMappings | undefined;
 }
 
 export interface IWorkspaceResourcePaths {
@@ -47,7 +54,8 @@ export interface IWorkspaceSettings {
   readonly defaultModel?: string;
 }
 
-export interface IWorkspaceDirectoryAssets {
+export interface IWorkspaceMatchedConfig {
+  readonly glob: string;
   readonly directoryPath: string;
   readonly promptFileName?: string | undefined;
   readonly skillNames: string[];
@@ -56,5 +64,6 @@ export interface IWorkspaceDirectoryAssets {
 }
 
 export interface IWorkspaceReportDetails {
-  readonly workspaces: IWorkspaceDirectoryAssets[];
+  readonly cwd: string;
+  readonly configs: IWorkspaceMatchedConfig[];
 }
