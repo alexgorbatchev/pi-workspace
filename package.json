@@ -1,6 +1,6 @@
 {
   "name": "@alexgorbatchev/pi-workspace",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Pi extension for hierarchical out-of-tree workspaces (org-wide and project-specific skills, prompts, extensions, and system instructions)",
   "type": "module",
   "files": [
