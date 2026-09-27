@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
@@ -5,6 +6,7 @@ import type {
   DirectoryReaderFn,
   FileExistsFn,
   FileReaderFn,
+  GitConfigReaderFn,
   IWorkspaceConfig,
   IWorkspaceMatchedConfig,
   IWorkspaceResourcePaths,
@@ -15,6 +17,10 @@ import type {
 
 export const CONFIG_KEY = "@alexgorbatchev/pi-workspace";
 
+export const GIT_CONFIG_CONFIG_KEY = "pi-workspace.config";
+export const GIT_CONFIG_KEY = "pi-workspace.load";
+export const GIT_CONFIG_PATH_KEY = "pi-workspace.path";
+
 export const PROMPT_FILE_NAMES = ["APPEND_SYSTEM.md", "SYSTEM.md", "AGENTS.md", "CLAUDE.md"] as const;
 
 export interface IWorkspaceResolverOptions {
@@ -22,6 +28,8 @@ export interface IWorkspaceResolverOptions {
   readonly homeDirectoryPath?: string | undefined;
   readonly fileExists?: FileExistsFn | undefined;
   readonly directoryReader?: DirectoryReaderFn | undefined;
+  readonly fileReader?: FileReaderFn | undefined;
+  readonly gitConfigReader?: GitConfigReaderFn | undefined;
 }
 
 export function expandHomeDirectory(filePath: string, homeDirectoryPath: string = homedir()): string {
@@ -66,7 +74,7 @@ export function parseWorkspaceConfig(settings: unknown): IWorkspaceConfig | unde
     return undefined;
   }
 
-  const rawConfig = Reflect.get(settings, CONFIG_KEY);
+  const rawConfig = Array.isArray(settings) ? { configs: settings } : (Reflect.get(settings, CONFIG_KEY) ?? settings);
   if (typeof rawConfig !== "object" || rawConfig === null) {
     return undefined;
   }
@@ -342,6 +350,344 @@ export function findMainRepositoryRoot(startDirectory: string): string | undefin
   }
 
   return undefined;
+}
+
+function stripGitComment(line: string): string {
+  let isInDoubleQuote = false;
+  let isInSingleQuote = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"' && !isInSingleQuote) {
+      isInDoubleQuote = !isInDoubleQuote;
+    } else if (char === "'" && !isInDoubleQuote) {
+      isInSingleQuote = !isInSingleQuote;
+    } else if ((char === "#" || char === ";") && !isInDoubleQuote && !isInSingleQuote) {
+      return line.slice(0, i).trim();
+    }
+  }
+
+  return line.trim();
+}
+
+export function parseGitConfigLoads(configContent: string): string[] {
+  const lines = configContent.split(/\r?\n/);
+  let isInPiWorkspaceSection = false;
+  const configValues: string[] = [];
+  const loadValues: string[] = [];
+  const pathValues: string[] = [];
+
+  for (const rawLine of lines) {
+    const cleanLine = stripGitComment(rawLine);
+    if (cleanLine.length === 0) {
+      continue;
+    }
+
+    const sectionMatch = cleanLine.match(/^\[\s*([a-zA-Z0-9_\-.]+)(?:\s+.*)?\]$/);
+    if (sectionMatch) {
+      const sectionName = sectionMatch[1] ?? "";
+      isInPiWorkspaceSection = sectionName.toLowerCase() === "pi-workspace";
+      continue;
+    }
+
+    if (!isInPiWorkspaceSection) {
+      continue;
+    }
+
+    const keyValueMatch = cleanLine.match(/^([a-zA-Z0-9_-]+)\s*=\s*(.+)$/);
+    if (keyValueMatch) {
+      const keyName = (keyValueMatch[1] ?? "").toLowerCase();
+      let rawValue = (keyValueMatch[2] ?? "").trim();
+
+      if (
+        (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
+        (rawValue.startsWith("'") && rawValue.endsWith("'"))
+      ) {
+        rawValue = rawValue.slice(1, -1).trim();
+      }
+
+      const pathSegments = rawValue
+        .split(",")
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0);
+
+      if (keyName === "config") {
+        for (const segment of pathSegments) {
+          configValues.push(segment);
+        }
+      } else if (keyName === "load") {
+        for (const segment of pathSegments) {
+          loadValues.push(segment);
+        }
+      } else if (keyName === "path") {
+        for (const segment of pathSegments) {
+          pathValues.push(segment);
+        }
+      }
+    }
+  }
+
+  if (configValues.length > 0) {
+    return configValues;
+  }
+  return loadValues.length > 0 ? loadValues : pathValues;
+}
+
+export function readGitConfigLoads(repositoryRoot: string, options?: IWorkspaceResolverOptions): string[] {
+  if (options?.gitConfigReader) {
+    return options.gitConfigReader(repositoryRoot);
+  }
+
+  // 1. Try Git CLI first if in a real git environment
+  try {
+    const output = execFileSync("git", ["config", "--get-all", GIT_CONFIG_CONFIG_KEY], {
+      cwd: repositoryRoot,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const parsedConfigs: string[] = [];
+    const lines = output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    for (const line of lines) {
+      const splitItems = line
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+      for (const item of splitItems) {
+        parsedConfigs.push(item);
+      }
+    }
+    if (parsedConfigs.length > 0) {
+      return parsedConfigs;
+    }
+  } catch {
+    // CLI not available or key not found
+  }
+
+  try {
+    const output = execFileSync("git", ["config", "--get-all", GIT_CONFIG_KEY], {
+      cwd: repositoryRoot,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const parsedLoads: string[] = [];
+    const lines = output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    for (const line of lines) {
+      const splitItems = line
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+      for (const item of splitItems) {
+        parsedLoads.push(item);
+      }
+    }
+    if (parsedLoads.length > 0) {
+      return parsedLoads;
+    }
+  } catch {
+    // CLI not available or key not found
+  }
+
+  try {
+    const output = execFileSync("git", ["config", "--get-all", GIT_CONFIG_PATH_KEY], {
+      cwd: repositoryRoot,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const parsedPaths: string[] = [];
+    const lines = output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    for (const line of lines) {
+      const splitItems = line
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+      for (const item of splitItems) {
+        parsedPaths.push(item);
+      }
+    }
+    if (parsedPaths.length > 0) {
+      return parsedPaths;
+    }
+  } catch {
+    // CLI not available or key not found
+  }
+
+  // 2. Direct filesystem read fallback (works in mock/isolated test environments)
+  const checkFileExists = options?.fileExists ?? existsSync;
+  const fileReader = options?.fileReader ?? ((filePath) => readFileSync(filePath, "utf-8"));
+
+  // Check worktree config if in a linked worktree
+  const gitPath = join(repositoryRoot, ".git");
+  if (checkFileExists(gitPath)) {
+    try {
+      const stats = statSync(gitPath);
+      if (stats.isFile()) {
+        const content = fileReader(gitPath).trim();
+        const match = content.match(/^gitdir:\s*(.+)$/m);
+        if (match && match[1]) {
+          const gitDir = resolve(repositoryRoot, match[1].trim());
+          const worktreeConfigPath = join(gitDir, "config.worktree");
+          if (checkFileExists(worktreeConfigPath)) {
+            const worktreeContent = fileReader(worktreeConfigPath);
+            const worktreeLoads = parseGitConfigLoads(worktreeContent);
+            if (worktreeLoads.length > 0) {
+              return worktreeLoads;
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore unreadable worktree gitdir
+    }
+  }
+
+  // Read standard main repo .git/config
+  const mainRepo = findMainRepositoryRoot(repositoryRoot) ?? repositoryRoot;
+  const configPath = join(mainRepo, ".git", "config");
+  if (checkFileExists(configPath)) {
+    try {
+      const content = fileReader(configPath);
+      const parsed = parseGitConfigLoads(content);
+      if (parsed.length > 0) {
+        return parsed;
+      }
+    } catch {
+      // Ignore unreadable config
+    }
+  }
+
+  return [];
+}
+
+export function resolveGitConfigPath(
+  targetDirectory: string,
+  checkFileExists: FileExistsFn = existsSync,
+  fileReader: FileReaderFn = (filePath) => readFileSync(filePath, "utf-8"),
+): string | undefined {
+  const gitPath = join(targetDirectory, ".git");
+  if (checkFileExists(gitPath)) {
+    try {
+      const stats = statSync(gitPath);
+      if (stats.isFile()) {
+        const content = fileReader(gitPath).trim();
+        const match = content.match(/^gitdir:\s*(.+)$/m);
+        if (match && match[1]) {
+          const gitDir = resolve(targetDirectory, match[1].trim());
+          const worktreeConfigPath = join(gitDir, "config.worktree");
+          if (checkFileExists(worktreeConfigPath)) {
+            return worktreeConfigPath;
+          }
+        }
+      }
+    } catch {
+      // Ignore unreadable worktree gitdir
+    }
+  }
+
+  const mainRepo = findMainRepositoryRoot(targetDirectory);
+  if (mainRepo) {
+    const configPath = join(mainRepo, ".git", "config");
+    if (checkFileExists(configPath)) {
+      return configPath;
+    }
+  }
+
+  return undefined;
+}
+
+export function loadGitWorkspaceConfig(
+  directory: string,
+  options?: IWorkspaceResolverOptions,
+): IWorkspaceConfig | undefined {
+  const mainRepositoryRoot = findMainRepositoryRoot(directory);
+  if (!mainRepositoryRoot) {
+    return undefined;
+  }
+
+  const rawLoads = readGitConfigLoads(directory, options);
+  if (rawLoads.length === 0) {
+    return undefined;
+  }
+
+  const checkFileExists = options?.fileExists ?? existsSync;
+  const fileReader = options?.fileReader ?? ((filePath) => readFileSync(filePath, "utf-8"));
+  const homeDirectoryPath = options?.homeDirectoryPath;
+
+  // Check if first entry points to a JSON configuration file
+  const firstRaw = rawLoads[0];
+  if (firstRaw) {
+    const expandedFirst = expandHomeDirectory(firstRaw, homeDirectoryPath);
+    const resolvedFirst = isAbsolute(expandedFirst) ? expandedFirst : resolve(mainRepositoryRoot, expandedFirst);
+
+    if (firstRaw.endsWith(".json") || (checkFileExists(resolvedFirst) && resolvedFirst.endsWith(".json"))) {
+      try {
+        const fileContent = fileReader(resolvedFirst);
+        const parsedJson = JSON.parse(fileContent);
+        const parsedConfig = parseWorkspaceConfig(parsedJson);
+
+        if (parsedConfig && parsedConfig.configs && parsedConfig.configs.length > 0) {
+          const jsonDir = dirname(resolvedFirst);
+          const normalizedRules: IWorkspaceRule[] = parsedConfig.configs.map((rule) => {
+            const rawTargets = Array.isArray(rule.load) ? rule.load : [rule.load];
+            const normalizedTargets = rawTargets.map((target) => {
+              const exp = expandHomeDirectory(target, homeDirectoryPath);
+              return isAbsolute(exp) ? exp : resolve(jsonDir, exp);
+            });
+            const ruleLoad: WorkspaceRuleLoad =
+              normalizedTargets.length === 1 && normalizedTargets[0] !== undefined
+                ? normalizedTargets[0]
+                : normalizedTargets;
+            return {
+              when: rule.when,
+              load: ruleLoad,
+            };
+          });
+
+          return {
+            configs: normalizedRules,
+            gitConfigValue: resolvedFirst,
+          };
+        }
+      } catch (error) {
+        console.error(`[pi-workspace] Failed to parse JSON config from ${resolvedFirst}:`, error);
+      }
+    }
+  }
+
+  const resolvedPaths: string[] = [];
+  for (const rawPath of rawLoads) {
+    const expanded = expandHomeDirectory(rawPath, homeDirectoryPath);
+    const resolvedPath = isAbsolute(expanded) ? expanded : resolve(mainRepositoryRoot, expanded);
+    if (!resolvedPaths.includes(resolvedPath)) {
+      resolvedPaths.push(resolvedPath);
+    }
+  }
+
+  if (resolvedPaths.length === 0) {
+    return undefined;
+  }
+
+  const ruleWhen = collapseHomeDirectory(mainRepositoryRoot, homeDirectoryPath);
+  const ruleLoad: WorkspaceRuleLoad =
+    resolvedPaths.length === 1 && resolvedPaths[0] !== undefined ? resolvedPaths[0] : resolvedPaths;
+
+  return {
+    configs: [
+      {
+        when: ruleWhen,
+        load: ruleLoad,
+      },
+    ],
+    gitConfigValue: rawLoads.length === 1 && rawLoads[0] !== undefined ? rawLoads[0] : rawLoads,
+  };
 }
 
 export function resolveMatchedWorkspaceConfigs(

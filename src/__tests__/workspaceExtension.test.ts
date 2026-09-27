@@ -6,11 +6,86 @@ import {
   applyWorkspaceSettings,
   buildSystemPromptAppend,
   formatWorkspaceReport,
+  loadEffectiveConfig,
   loadWorkspaceExtensions,
   workspaceExtension,
 } from "../workspaceExtension.js";
 
 describe("workspaceExtension", () => {
+  describe("loadEffectiveConfig", () => {
+    it("loads config from git repository with pi-workspace.load configured", () => {
+      const testDir = join(tmpdir(), `pi-ws-effective-${Date.now()}`);
+      const gitDir = join(testDir, ".git");
+      mkdirSync(gitDir, { recursive: true });
+      writeFileSync(join(gitDir, "config"), `[core]\n\tbare = false\n[pi-workspace]\n\tload = /mock/workspace/layer\n`);
+
+      try {
+        const effective = loadEffectiveConfig(testDir);
+        expect(effective).toBeDefined();
+        expect(effective?.gitConfigValue).toBe("/mock/workspace/layer");
+        expect(effective?.configs).toBeDefined();
+        const hasGitRule = effective?.configs?.some(
+          (rule) =>
+            rule.load === "/mock/workspace/layer" ||
+            (Array.isArray(rule.load) && rule.load.includes("/mock/workspace/layer")),
+        );
+        expect(hasGitRule).toBe(true);
+      } finally {
+        rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+
+    it("loads config with multiple load paths as array for gitConfigValue", () => {
+      const testDir = join(tmpdir(), `pi-ws-multi-${Date.now()}`);
+      const gitDir = join(testDir, ".git");
+      mkdirSync(gitDir, { recursive: true });
+      writeFileSync(
+        join(gitDir, "config"),
+        `[core]\n\tbare = false\n[pi-workspace]\n\tload = /mock/layer/one\n\tload = /mock/layer/two\n`,
+      );
+
+      try {
+        const effective = loadEffectiveConfig(testDir);
+        expect(effective).toBeDefined();
+        expect(effective?.gitConfigValue).toEqual(["/mock/layer/one", "/mock/layer/two"]);
+      } finally {
+        rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+
+    it("loads config from JSON file when pi-workspace.config is set in git", () => {
+      const testDir = join(tmpdir(), `pi-ws-json-${Date.now()}`);
+      const gitDir = join(testDir, ".git");
+      mkdirSync(gitDir, { recursive: true });
+      const jsonPath = join(testDir, "custom-workspace.json");
+      writeFileSync(
+        jsonPath,
+        JSON.stringify({
+          configs: [
+            {
+              when: testDir,
+              load: join(testDir, "workspace-layer"),
+            },
+          ],
+        }),
+      );
+      writeFileSync(
+        join(gitDir, "config"),
+        `[core]\n\tbare = false\n[pi-workspace]\n\tconfig = ./custom-workspace.json\n`,
+      );
+
+      try {
+        const effective = loadEffectiveConfig(testDir);
+        expect(effective).toBeDefined();
+        expect(effective?.gitConfigValue).toBe(jsonPath);
+        expect(effective?.configs).toHaveLength(1);
+        expect(effective?.configs?.[0]?.load).toBe(join(testDir, "workspace-layer"));
+      } finally {
+        rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("buildSystemPromptAppend", () => {
     it("returns empty string when no prompt files exist", () => {
       const result = buildSystemPromptAppend(["/nonexistent/org", "/nonexistent/proj"]);
@@ -118,6 +193,51 @@ describe("workspaceExtension", () => {
     it("formats empty report when no workspaces matched", () => {
       const report = formatWorkspaceReport(mockTheme, { cwd: "/home/development/unmatched", configs: [] }, "/home");
       expect(report).toContain("(no matching workspace config)");
+    });
+
+    it("formats git config value above cwd when gitConfigValue is provided", () => {
+      const report = formatWorkspaceReport(
+        mockTheme,
+        {
+          gitConfigValue: "/home/development/company-a/auth-service/workspace.json",
+          cwd: "/home/development/company-a/auth-service/.worktrees/task-1",
+          configs: [],
+        },
+        "/home",
+      );
+
+      expect(report).toContain(
+        "  git: ~/development/company-a/auth-service/workspace.json\n  cwd: ~/development/company-a/auth-service/.worktrees/task-1",
+      );
+    });
+
+    it("formats git config values as nested bullets when gitConfigValue is an array", () => {
+      const report = formatWorkspaceReport(
+        mockTheme,
+        {
+          gitConfigValue: ["/home/development/company-a/_common", "/home/development/company-a/auth-service"],
+          cwd: "/home/development/company-a/auth-service/.worktrees/task-1",
+          configs: [],
+        },
+        "/home",
+      );
+
+      expect(report).toContain(
+        "  git:\n    - ~/development/company-a/_common\n    - ~/development/company-a/auth-service\n  cwd: ~/development/company-a/auth-service/.worktrees/task-1",
+      );
+    });
+
+    it("does not include git line when gitConfigValue is omitted", () => {
+      const report = formatWorkspaceReport(
+        mockTheme,
+        {
+          cwd: "/home/development/company-a/auth-service",
+          configs: [],
+        },
+        "/home",
+      );
+
+      expect(report).not.toContain("  git:");
     });
   });
 

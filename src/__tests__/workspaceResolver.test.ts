@@ -8,8 +8,11 @@ import {
   findMainRepositoryRoot,
   findPromptFile,
   getWorkspaceResourcePaths,
+  loadGitWorkspaceConfig,
   matchWorkspacePattern,
+  parseGitConfigLoads,
   parseWorkspaceConfig,
+  readGitConfigLoads,
   readPromptFile,
   readSettingsFile,
   resolveMatchedWorkspaceConfigs,
@@ -410,6 +413,183 @@ describe("workspaceResolver", () => {
         join(orgDir, "extensions", "telemetry.ts"),
         join(projDir, "extensions", "auth-tool.ts"),
       ]);
+    });
+  });
+
+  describe("parseGitConfigLoads", () => {
+    it("returns empty array for empty or unrelated git config", () => {
+      const content = [
+        "[core]",
+        "\trepositoryformatversion = 0",
+        "\tbare = false",
+        '[remote "origin"]',
+        "\turl = git@github.com:foo/bar.git",
+      ].join("\n");
+      expect(parseGitConfigLoads(content)).toEqual([]);
+    });
+
+    it("parses single load key in [pi-workspace]", () => {
+      const content = ["[pi-workspace]", "\tload = ~/.pi/workspaces/company/auth-service"].join("\n");
+      expect(parseGitConfigLoads(content)).toEqual(["~/.pi/workspaces/company/auth-service"]);
+    });
+
+    it("parses multiple load lines in [pi-workspace]", () => {
+      const content = [
+        "[pi-workspace]",
+        "\tload = ~/.pi/workspaces/company/_common",
+        "\tload = ~/.pi/workspaces/company/auth-service",
+      ].join("\n");
+      expect(parseGitConfigLoads(content)).toEqual([
+        "~/.pi/workspaces/company/_common",
+        "~/.pi/workspaces/company/auth-service",
+      ]);
+    });
+
+    it("parses comma-separated values in load key", () => {
+      const content = [
+        "[pi-workspace]",
+        "\tload = ~/.pi/workspaces/company/_common, ~/.pi/workspaces/company/auth-service",
+      ].join("\n");
+      expect(parseGitConfigLoads(content)).toEqual([
+        "~/.pi/workspaces/company/_common",
+        "~/.pi/workspaces/company/auth-service",
+      ]);
+    });
+
+    it("strips comments, trims whitespace, and unquotes values", () => {
+      const content = [
+        "# global comment",
+        "[pi-workspace] # inline comment",
+        "\t# line comment",
+        "\t; semicolon comment",
+        '\tload = "  ~/.pi/workspaces/with spaces/proj  "',
+      ].join("\n");
+      expect(parseGitConfigLoads(content)).toEqual(["~/.pi/workspaces/with spaces/proj"]);
+    });
+
+    it("falls back to path key if load key is absent", () => {
+      const content = ["[pi-workspace]", "\tpath = ~/.pi/workspaces/legacy/proj"].join("\n");
+      expect(parseGitConfigLoads(content)).toEqual(["~/.pi/workspaces/legacy/proj"]);
+    });
+  });
+
+  describe("readGitConfigLoads", () => {
+    it("uses custom gitConfigReader when provided in options", () => {
+      const customLoads = ["/custom/workspace/a", "/custom/workspace/b"];
+      const loads = readGitConfigLoads("/any/repo", {
+        gitConfigReader: () => customLoads,
+      });
+      expect(loads).toEqual(customLoads);
+    });
+
+    it("reads loads directly from file using custom fileReader", () => {
+      const configContent = ["[pi-workspace]", "\tload = /mock/dir/one"].join("\n");
+      const loads = readGitConfigLoads("/mock/repo", {
+        fileExists: (p) => p.endsWith(".git/config"),
+        fileReader: () => configContent,
+      });
+      expect(loads).toEqual(["/mock/dir/one"]);
+    });
+  });
+
+  describe("loadGitWorkspaceConfig", () => {
+    it("returns undefined when directory is not inside a git repository", () => {
+      const nonGitDir = join(tmpdir(), `non-git-${Date.now()}`);
+      mkdirSync(nonGitDir, { recursive: true });
+      try {
+        expect(loadGitWorkspaceConfig(nonGitDir)).toBeUndefined();
+      } finally {
+        rmSync(nonGitDir, { recursive: true, force: true });
+      }
+    });
+
+    it("returns undefined when git repo has no pi-workspace.load configured", () => {
+      const testDir = join(tmpdir(), `git-empty-config-${Date.now()}`);
+      const gitDir = join(testDir, ".git");
+      mkdirSync(gitDir, { recursive: true });
+      writeFileSync(join(gitDir, "config"), "[core]\n\tbare = false\n");
+
+      try {
+        expect(loadGitWorkspaceConfig(testDir)).toBeUndefined();
+      } finally {
+        rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+
+    it("loads workspace config from git config and resolves relative paths to repo root", () => {
+      const testDir = join(tmpdir(), `git-configured-repo-${Date.now()}`);
+      const gitDir = join(testDir, ".git");
+      mkdirSync(gitDir, { recursive: true });
+
+      writeFileSync(
+        join(gitDir, "config"),
+        `[core]\n\tbare = false\n[pi-workspace]\n\tload = ./workspaces/common, ./workspaces/project\n`,
+      );
+
+      try {
+        const config = loadGitWorkspaceConfig(testDir);
+        expect(config).toBeDefined();
+        expect(config?.configs).toHaveLength(1);
+        expect(config?.configs?.[0]?.when).toBe(collapseHomeDirectory(testDir));
+        expect(config?.configs?.[0]?.load).toEqual([
+          join(testDir, "workspaces", "common"),
+          join(testDir, "workspaces", "project"),
+        ]);
+      } finally {
+        rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+
+    it("resolves config when cwd is a subdirectory of the git repository", () => {
+      const testDir = join(tmpdir(), `git-sub-repo-${Date.now()}`);
+      const gitDir = join(testDir, ".git");
+      const subDir = join(testDir, "src", "nested");
+      mkdirSync(gitDir, { recursive: true });
+      mkdirSync(subDir, { recursive: true });
+
+      writeFileSync(
+        join(gitDir, "config"),
+        `[core]\n\tbare = false\n[pi-workspace]\n\tload = ~/.pi/workspaces/company/auth-service\n`,
+      );
+
+      try {
+        const config = loadGitWorkspaceConfig(subDir, { homeDirectoryPath: fakeHome });
+        expect(config).toBeDefined();
+        expect(config?.configs).toHaveLength(1);
+        expect(config?.configs?.[0]?.when).toBe(collapseHomeDirectory(testDir, fakeHome));
+        expect(config?.configs?.[0]?.load).toBe(join(fakeHome, ".pi", "workspaces", "company", "auth-service"));
+      } finally {
+        rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+
+    it("resolves config when cwd is a git worktree inheriting main repo config", () => {
+      const testDir = join(tmpdir(), `git-wt-test-${Date.now()}`);
+      const mainRepo = join(testDir, "main-repo");
+      const mainGitDir = join(mainRepo, ".git");
+      const worktreeDir = join(testDir, "worktree-1");
+      const wtGitDir = join(mainGitDir, "worktrees", "worktree-1");
+
+      mkdirSync(mainGitDir, { recursive: true });
+      mkdirSync(wtGitDir, { recursive: true });
+      mkdirSync(worktreeDir, { recursive: true });
+
+      writeFileSync(
+        join(mainGitDir, "config"),
+        `[core]\n\tbare = false\n[pi-workspace]\n\tload = ./fixtures/workspace\n`,
+      );
+      writeFileSync(join(wtGitDir, "commondir"), "../..\n");
+      writeFileSync(join(worktreeDir, ".git"), `gitdir: ${wtGitDir}\n`);
+
+      try {
+        const config = loadGitWorkspaceConfig(worktreeDir);
+        expect(config).toBeDefined();
+        expect(config?.configs).toHaveLength(1);
+        expect(config?.configs?.[0]?.when).toBe(collapseHomeDirectory(mainRepo));
+        expect(config?.configs?.[0]?.load).toBe(join(mainRepo, "fixtures", "workspace"));
+      } finally {
+        rmSync(testDir, { recursive: true, force: true });
+      }
     });
   });
 });

@@ -15,6 +15,7 @@ import {
   collapseHomeDirectory,
   CONFIG_KEY,
   getWorkspaceResourcePaths,
+  loadGitWorkspaceConfig,
   parseWorkspaceConfig,
   readPromptFile,
   readSettingsFile,
@@ -50,15 +51,21 @@ export function loadEffectiveConfig(cwd: string): IWorkspaceConfig | undefined {
     const settingsManager = SettingsManager.create(cwd);
     const globalConfig = parseWorkspaceConfig(settingsManager.getGlobalSettings());
     const projectConfig = parseWorkspaceConfig(settingsManager.getProjectSettings());
+    const gitConfig = loadGitWorkspaceConfig(cwd);
 
-    if (!globalConfig && !projectConfig) {
+    if (!globalConfig && !projectConfig && !gitConfig) {
       return undefined;
     }
 
-    const mergedConfigs = [...(globalConfig?.configs ?? []), ...(projectConfig?.configs ?? [])];
+    const mergedConfigs = [
+      ...(globalConfig?.configs ?? []),
+      ...(gitConfig?.configs ?? []),
+      ...(projectConfig?.configs ?? []),
+    ];
 
     return {
       configs: mergedConfigs,
+      ...(gitConfig?.gitConfigValue !== undefined ? { gitConfigValue: gitConfig.gitConfigValue } : {}),
     };
   } catch (error) {
     console.error("[pi-workspace] Failed to load workspace configuration:", error);
@@ -118,6 +125,25 @@ export function formatWorkspaceReport(
   homeDirectoryPath?: string,
 ): string {
   let reportText = theme.fg("mdHeading", `[${CONFIG_KEY}]`) + "\n";
+  const gitConfigValue = details.gitConfigValue;
+  if (gitConfigValue) {
+    if (typeof gitConfigValue === "string") {
+      reportText +=
+        theme.fg("accent", "  git: ") +
+        theme.fg("dim", collapseHomeDirectory(gitConfigValue, homeDirectoryPath)) +
+        "\n";
+    } else if (gitConfigValue.length === 1 && gitConfigValue[0] !== undefined) {
+      reportText +=
+        theme.fg("accent", "  git: ") +
+        theme.fg("dim", collapseHomeDirectory(gitConfigValue[0], homeDirectoryPath)) +
+        "\n";
+    } else if (gitConfigValue.length > 1) {
+      reportText += theme.fg("accent", "  git:") + "\n";
+      for (const item of gitConfigValue) {
+        reportText += theme.fg("dim", `    - ${collapseHomeDirectory(item, homeDirectoryPath)}`) + "\n";
+      }
+    }
+  }
   reportText +=
     theme.fg("accent", "  cwd: ") + theme.fg("dim", collapseHomeDirectory(details.cwd, homeDirectoryPath)) + "\n";
 
@@ -278,6 +304,7 @@ export async function workspaceExtension(pi: ExtensionAPI): Promise<void> {
         customType: CONFIG_KEY,
         content: formatWorkspaceReport(ctx.ui.theme, {
           cwd: ctx.cwd,
+          ...(effectiveConfig?.gitConfigValue !== undefined ? { gitConfigValue: effectiveConfig.gitConfigValue } : {}),
           configs: matchedConfigs,
         }),
         display: true,
