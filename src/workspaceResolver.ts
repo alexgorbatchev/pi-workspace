@@ -122,27 +122,76 @@ function normalizePathSegments(inputPath: string, homeDirectoryPath?: string): s
   return resolved.split(/[/\\]+/).filter((segment) => segment.length > 0 && segment !== ".");
 }
 
-export function matchWorkspacePattern(pattern: string, targetDirectory: string, homeDirectoryPath?: string): boolean {
+export interface IPatternMatchResult {
+  readonly isMatch: boolean;
+  readonly captures: readonly string[];
+  readonly projectName?: string | undefined;
+}
+
+export function matchWorkspacePatternWithCaptures(
+  pattern: string,
+  targetDirectory: string,
+  homeDirectoryPath?: string,
+): IPatternMatchResult {
   const patternSegments = normalizePathSegments(pattern, homeDirectoryPath);
   const targetSegments = normalizePathSegments(targetDirectory, homeDirectoryPath);
 
   if (targetSegments.length < patternSegments.length) {
-    return false;
+    return { isMatch: false, captures: [] };
   }
+
+  const captures: string[] = [];
 
   for (let i = 0; i < patternSegments.length; i++) {
     const patternSegment = patternSegments[i] ?? "";
     const targetSegment = targetSegments[i] ?? "";
 
     if (patternSegment === "*") {
+      captures.push(targetSegment);
       continue;
     }
     if (patternSegment.toLowerCase() !== targetSegment.toLowerCase()) {
-      return false;
+      return { isMatch: false, captures: [] };
     }
   }
 
-  return true;
+  const lastCapture = captures[captures.length - 1];
+  const matchedProjectName = lastCapture ?? targetSegments[patternSegments.length - 1];
+
+  return {
+    isMatch: true,
+    captures,
+    projectName: matchedProjectName,
+  };
+}
+
+export function matchWorkspacePattern(pattern: string, targetDirectory: string, homeDirectoryPath?: string): boolean {
+  return matchWorkspacePatternWithCaptures(pattern, targetDirectory, homeDirectoryPath).isMatch;
+}
+
+export function interpolatePathPlaceholders(
+  pathTemplate: string,
+  projectName?: string,
+  captures: readonly string[] = [],
+): string {
+  let result = pathTemplate;
+
+  if (projectName) {
+    result = result.replaceAll("[project]", projectName);
+    result = result.replaceAll("[PROJECT]", projectName);
+    result = result.replaceAll(":project", projectName);
+    result = result.replaceAll("[name]", projectName);
+    result = result.replaceAll(":name", projectName);
+  }
+
+  for (let i = 0; i < captures.length; i++) {
+    const capture = captures[i] ?? "";
+    const index = i + 1;
+    result = result.replaceAll(`:${index}`, capture);
+    result = result.replaceAll(`$${index}`, capture);
+  }
+
+  return result;
 }
 
 export function findPromptFile(directoryPath: string, checkFileExists: FileExistsFn = existsSync): string | null {
@@ -705,17 +754,26 @@ export function resolveMatchedWorkspaceConfigs(
   const matchedList: IWorkspaceMatchedConfig[] = [];
 
   for (const rule of rules) {
-    const isDirectMatch = matchWorkspacePattern(rule.when, currentWorkingDirectory, options?.homeDirectoryPath);
-    const isWorktreeMatch =
-      !isDirectMatch && mainRepositoryRoot !== undefined
-        ? matchWorkspacePattern(rule.when, mainRepositoryRoot, options?.homeDirectoryPath)
-        : false;
+    const directMatch = matchWorkspacePatternWithCaptures(
+      rule.when,
+      currentWorkingDirectory,
+      options?.homeDirectoryPath,
+    );
+    const worktreeMatch =
+      !directMatch.isMatch && mainRepositoryRoot !== undefined
+        ? matchWorkspacePatternWithCaptures(rule.when, mainRepositoryRoot, options?.homeDirectoryPath)
+        : undefined;
 
-    if (isDirectMatch || isWorktreeMatch) {
+    const match = directMatch.isMatch ? directMatch : worktreeMatch?.isMatch ? worktreeMatch : undefined;
+
+    if (match) {
       const targetPaths = Array.isArray(rule.load) ? rule.load : [rule.load];
+      const projectName =
+        match.projectName ?? (mainRepositoryRoot ? basename(mainRepositoryRoot) : basename(currentWorkingDirectory));
 
       for (const rawPath of targetPaths) {
-        const expanded = expandHomeDirectory(rawPath, options?.homeDirectoryPath);
+        const interpolatedPath = interpolatePathPlaceholders(rawPath, projectName, match.captures);
+        const expanded = expandHomeDirectory(interpolatedPath, options?.homeDirectoryPath);
         const resolvedDirectory = resolve(expanded);
 
         if (checkFileExists(resolvedDirectory)) {

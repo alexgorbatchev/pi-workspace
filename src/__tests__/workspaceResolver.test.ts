@@ -8,6 +8,7 @@ import {
   findMainRepositoryRoot,
   findPromptFile,
   getWorkspaceResourcePaths,
+  interpolatePathPlaceholders,
   loadGitWorkspaceConfig,
   matchWorkspacePattern,
   parseGitConfigLoads,
@@ -136,6 +137,23 @@ describe("workspaceResolver", () => {
     });
   });
 
+  describe("interpolatePathPlaceholders", () => {
+    it("interpolates [project], :project, and [name] placeholders", () => {
+      expect(interpolatePathPlaceholders("/ai/[project]", "garaje")).toBe("/ai/garaje");
+      expect(interpolatePathPlaceholders("/ai/:project", "garaje")).toBe("/ai/garaje");
+      expect(interpolatePathPlaceholders("/ai/[name]", "garaje")).toBe("/ai/garaje");
+    });
+
+    it("interpolates numeric captures :1 and $1", () => {
+      expect(interpolatePathPlaceholders("/ai/:1/layer", "proj", ["captured"])).toBe("/ai/captured/layer");
+      expect(interpolatePathPlaceholders("/ai/$1/layer", "proj", ["captured"])).toBe("/ai/captured/layer");
+    });
+
+    it("leaves strings without placeholders unchanged", () => {
+      expect(interpolatePathPlaceholders("/ai/envoy", "garaje")).toBe("/ai/envoy");
+    });
+  });
+
   describe("resolveMatchedWorkspaceConfigs and resolveWorkspaceDirectories", () => {
     it("returns empty array when no config provided", () => {
       expect(resolveMatchedWorkspaceConfigs("/any/path")).toEqual([]);
@@ -179,6 +197,31 @@ describe("workspaceResolver", () => {
       });
 
       expect(directories).toEqual([orgDir, projDir]);
+    });
+
+    it("interpolates [project] in load paths from wildcard capture", () => {
+      const commonDir = join(fakeHome, "ai", "envoy");
+      const projectDir = join(fakeHome, "ai", "garaje");
+      const existingPaths = new Set([commonDir, projectDir]);
+
+      const config = {
+        configs: [
+          {
+            when: "~/development/envoy.com/*",
+            load: ["~/ai/envoy", "~/ai/[project]"],
+          },
+        ],
+      };
+
+      const matched = resolveMatchedWorkspaceConfigs(join(fakeHome, "development", "envoy.com", "garaje"), {
+        config,
+        homeDirectoryPath: fakeHome,
+        fileExists: (p) => existingPaths.has(p),
+      });
+
+      expect(matched).toHaveLength(2);
+      expect(matched[0]?.load).toBe(commonDir);
+      expect(matched[1]?.load).toBe(projectDir);
     });
 
     it("skips directories that do not exist on disk", () => {

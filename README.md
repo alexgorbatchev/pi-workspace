@@ -28,6 +28,7 @@ By default, configuring project-specific instructions, skills, and extensions in
 
 - **Git configuration autodiscovery**: Before matching path rules, the extension reads `pi-workspace.config` (JSON configuration file) or `pi-workspace.load` (workspace directory paths) from the repository's Git configuration (`.git/config` or linked worktree configs). Relative paths resolve against the canonical repository root, allowing clean project-level configuration without committing files or touching global settings.
 - **Pattern resolution**: When Pi starts or switches directories, the extension compares the current working directory against configured workspace patterns.
+- **Dynamic target interpolation**: Wildcard checkout patterns support dynamic workspace paths. The `load` property can include `[project]` (or `:project`, `:1`, `$1`) to automatically resolve the matched project folder name.
 - **Worktree detection**: When running inside a Git worktree (such as `<repo>/.worktrees/<name>`, `<repo>/.workspaces/<name>`, or a detached worktree directory), the extension resolves the worktree's `.git` file and `commondir` back to the canonical main repository root. Rules configured for the repository automatically apply in worktrees.
 - **Layer ordering**: Target directories are evaluated in the order listed in the mapping array. Layer instructions are appended in that exact sequence, and project-level skills and prompt templates override earlier layers when names collide.
 - **Verbatim instruction injection**: Before each agent turn (`before_agent_start`), the extension checks each resolved directory for `APPEND_SYSTEM.md`, `SYSTEM.md`, `AGENTS.md`, or `CLAUDE.md`. The contents are appended directly to Pi's system prompt without synthetic section headers.
@@ -182,7 +183,7 @@ Alternatively, configure the extension in `~/.pi/agent/settings.json` under the 
 Each rule defines:
 
 - `when`: Checkout directory path or pattern supporting `~` expansion and `*` wildcards.
-- `load`: Absolute or `~`-prefixed path (or array of paths) pointing to where the workspace assets live on disk.
+- `load`: Absolute or `~`-prefixed path (or array of paths) pointing to where the workspace assets live on disk. Supports `[project]` (or `:project`, `:1`, `$1`) placeholders when pairing with wildcard checkout patterns.
 
 All rules matching the current working directory apply in order. Earlier rules provide base layers, while later rules provide project-specific overlays.
 
