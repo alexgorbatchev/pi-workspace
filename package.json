@@ -42,15 +42,16 @@
   "devDependencies": {
     "@alexgorbatchev/pi-test-isolation": "github:alexgorbatchev/pi-test-isolation#v1.0.0",
     "@alexgorbatchev/typescript-ai-policy": "^14.0.3",
+    "@earendil-works/pi-ai": "1.5.0",
     "@earendil-works/pi-coding-agent": "1.5.0",
     "@earendil-works/pi-tui": "1.5.0",
     "@types/bun": "^1.4.4",
     "@types/node": "^26.6.6",
+    "foreground-child": "4.0.3",
     "oxfmt": "^0.76.0",
     "oxlint": "^1.91.0",
     "ts-unused": "^3.8.0",
-    "typescript": "^7.0.2",
-    "@earendil-works/pi-ai": "1.5.0"
+    "typescript": "^7.0.2"
   },
   "pi": {
     "extensions": [

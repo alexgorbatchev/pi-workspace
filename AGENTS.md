@@ -1,6 +1,6 @@
 ---
 created_on: 2026-11-05 12:10
-last_modified: 2026-11-05 12:10
+last_modified: 2026-11-05 12:27
 status: current
 ---
 
@@ -36,6 +36,7 @@ Pi extension for ordered out-of-tree workspace layers, including instructions, s
 - Verify the full suite leaves an initially empty `TMPDIR` empty before supervisor cleanup. Keep child-process regressions for all three test outcomes.
 - Compare checkout scratch, system temporary files, and processes before and after test changes. The isolation supervisor is not a filesystem sandbox.
 - Use task-owned `.tmp/` children for disposable artifacts, `.state/` for retained records, and `.cache/` for regenerable caches. Never delete shared scratch by name.
+- Manual demos use unique invocation-owned scratch and the maintained foreground-child wrapper to preserve interactive I/O, forward signals, and propagate child status. Route child toolchain temporary directories into owned scratch while preserving real user settings. Check every Git setup command; remove owned scratch only after the child exits. Preserve other invocations and existing scratch.
 - Keep tests and tooling out of published packages; inspect the actual package contents before publication.
 
 ## Boundaries
