@@ -3,10 +3,9 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import type {
-  DirectoryReaderFn,
+  PathListReaderFn,
   FileExistsFn,
   FileReaderFn,
-  GitConfigReaderFn,
   IWorkspaceConfig,
   IWorkspaceMatchedConfig,
   IWorkspaceResourcePaths,
@@ -27,9 +26,9 @@ export interface IWorkspaceResolverOptions {
   readonly config?: IWorkspaceConfig | undefined;
   readonly homeDirectoryPath?: string | undefined;
   readonly fileExists?: FileExistsFn | undefined;
-  readonly directoryReader?: DirectoryReaderFn | undefined;
+  readonly directoryReader?: PathListReaderFn | undefined;
   readonly fileReader?: FileReaderFn | undefined;
-  readonly gitConfigReader?: GitConfigReaderFn | undefined;
+  readonly gitConfigReader?: PathListReaderFn | undefined;
 }
 
 export function expandHomeDirectory(filePath: string, homeDirectoryPath: string = homedir()): string {
@@ -291,7 +290,7 @@ export interface IDirectoryAssetScan {
 export function scanDirectoryAssets(
   directoryPath: string,
   checkFileExists: FileExistsFn = existsSync,
-  directoryReader: DirectoryReaderFn = (dirPath) => readdirSync(dirPath),
+  directoryReader: PathListReaderFn = (dirPath) => readdirSync(dirPath),
 ): IDirectoryAssetScan {
   const promptPath = findPromptFile(directoryPath, checkFileExists);
   const promptFileName = promptPath ? basename(promptPath) : undefined;
@@ -814,7 +813,7 @@ export function resolveWorkspaceDirectories(
 export function getWorkspaceResourcePaths(
   directories: readonly string[],
   checkFileExists: FileExistsFn = existsSync,
-  directoryReader: DirectoryReaderFn = (dirPath) => readdirSync(dirPath),
+  directoryReader: PathListReaderFn = (dirPath) => readdirSync(dirPath),
 ): IWorkspaceResourcePaths {
   const skillPaths: string[] = [];
   const promptPaths: string[] = [];

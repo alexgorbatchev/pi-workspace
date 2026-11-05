@@ -2,8 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export type FileExistsFn = (filePath: string) => boolean;
 export type FileReaderFn = (filePath: string) => string;
-export type DirectoryReaderFn = (dirPath: string) => string[];
-export type GitConfigReaderFn = (repoRoot: string) => string[];
+export type PathListReaderFn = (path: string) => string[];
 
 export interface IThemeFormatter {
   fg(color: string, text: string): string;

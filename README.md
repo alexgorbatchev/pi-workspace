@@ -38,8 +38,8 @@ By default, configuring project-specific instructions, skills, and extensions in
 
 # Prerequisites
 
-- Pi Coding Agent (`@earendil-works/pi-coding-agent >= 0.85.1`)
-- Node.js `>= 22` (with TypeScript execution support) or Bun `>= 1.2`
+- Pi Coding Agent (`@earendil-works/pi-coding-agent ^1.5.0`)
+- Node.js `>= 22.19.0` or Bun `>= 1.4`
 
 # Installation
 

@@ -1,21 +1,26 @@
+import { createTestDirectory } from "./fixtures/index.js";
 import { DefaultResourceLoader, getAgentDir } from "@earendil-works/pi-coding-agent";
-import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { onTestFinished, describe, expect, test } from "bun:test";
+import { join } from "node:path";
+import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const extensionPath = fileURLToPath(new URL("../index.ts", import.meta.url));
 
 describe("pi-workspace extension entry", () => {
-  let projectDir = "";
-
-  afterEach(() => {
-    rmSync(projectDir, { recursive: true, force: true });
-  });
-
   test("loads through Pi's extension loader and registers its event handlers and message renderer", async () => {
-    projectDir = mkdtempSync(path.join(tmpdir(), "pi-workspace-project-"));
+    const projectDir = createTestDirectory();
+    const originalEnvironment = { TMPDIR: process.env.TMPDIR, TMP: process.env.TMP, TEMP: process.env.TEMP };
+    onTestFinished(() => {
+      Object.assign(process.env, originalEnvironment);
+    });
+    const loaderTemporaryDirectory = join(projectDir, "loader-tmp");
+    mkdirSync(loaderTemporaryDirectory);
+    Object.assign(process.env, {
+      TMPDIR: loaderTemporaryDirectory,
+      TMP: loaderTemporaryDirectory,
+      TEMP: loaderTemporaryDirectory,
+    });
     const loader = new DefaultResourceLoader({
       cwd: projectDir,
       agentDir: getAgentDir(),

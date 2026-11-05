@@ -1,3 +1,4 @@
+import type { TextContent } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
@@ -26,12 +27,7 @@ import {
 const VALID_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 type ThinkingLevel = (typeof VALID_THINKING_LEVELS)[number];
 
-interface ITextContentPart {
-  readonly type: "text";
-  readonly text: string;
-}
-
-function isTextContentPart(part: unknown): part is ITextContentPart {
+function isTextContentPart(part: unknown): part is TextContent {
   return (
     typeof part === "object" &&
     part !== null &&

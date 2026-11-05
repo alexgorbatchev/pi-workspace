@@ -1,6 +1,6 @@
+import { createTestDirectory } from "./fixtures/index.js";
 import { describe, expect, it, spyOn } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   applyWorkspaceSettings,
@@ -14,7 +14,7 @@ import {
 describe("workspaceExtension", () => {
   describe("loadEffectiveConfig", () => {
     it("loads config from git repository with pi-workspace.load configured", () => {
-      const testDir = join(tmpdir(), `pi-ws-effective-${Date.now()}`);
+      const testDir = createTestDirectory();
       const gitDir = join(testDir, ".git");
       mkdirSync(gitDir, { recursive: true });
       writeFileSync(join(gitDir, "config"), `[core]\n\tbare = false\n[pi-workspace]\n\tload = /mock/workspace/layer\n`);
@@ -36,7 +36,7 @@ describe("workspaceExtension", () => {
     });
 
     it("loads config with multiple load paths as array for gitConfigValue", () => {
-      const testDir = join(tmpdir(), `pi-ws-multi-${Date.now()}`);
+      const testDir = createTestDirectory();
       const gitDir = join(testDir, ".git");
       mkdirSync(gitDir, { recursive: true });
       writeFileSync(
@@ -54,7 +54,7 @@ describe("workspaceExtension", () => {
     });
 
     it("loads config from JSON file when pi-workspace.config is set in git", () => {
-      const testDir = join(tmpdir(), `pi-ws-json-${Date.now()}`);
+      const testDir = createTestDirectory();
       const gitDir = join(testDir, ".git");
       mkdirSync(gitDir, { recursive: true });
       const jsonPath = join(testDir, "custom-workspace.json");
@@ -93,7 +93,7 @@ describe("workspaceExtension", () => {
     });
 
     it("appends prompt files verbatim in layer order without synthetic headers", () => {
-      const testDir = join(tmpdir(), `pi-ws-test-${Date.now()}`);
+      const testDir = createTestDirectory();
       const orgDir = join(testDir, "org");
       const projDir = join(testDir, "proj");
 

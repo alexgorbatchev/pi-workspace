@@ -1,6 +1,6 @@
+import { createTestDirectory } from "./fixtures/index.js";
 import { describe, expect, it, spyOn } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   collapseHomeDirectory,
@@ -256,7 +256,7 @@ describe("workspaceResolver", () => {
     });
 
     it("resolves main repository root for a worktree", () => {
-      const testBase = join(tmpdir(), `pi-wt-unit-${Date.now()}`);
+      const testBase = createTestDirectory();
       const mainRepo = join(testBase, "repo");
       const worktreeDir = join(mainRepo, ".worktrees", "task-1");
 
@@ -283,7 +283,7 @@ describe("workspaceResolver", () => {
     });
 
     it("matches workspace rules when cwd is inside a git worktree", () => {
-      const testBase = join(tmpdir(), `pi-wt-match-${Date.now()}`);
+      const testBase = createTestDirectory();
       const mainRepo = join(testBase, "company", "projB");
       const worktreeDir = join(mainRepo, ".worktrees", "task-1");
       const assetDir = join(testBase, "ai", "projB");
@@ -537,7 +537,7 @@ describe("workspaceResolver", () => {
 
   describe("loadGitWorkspaceConfig", () => {
     it("returns undefined when directory is not inside a git repository", () => {
-      const nonGitDir = join(tmpdir(), `non-git-${Date.now()}`);
+      const nonGitDir = createTestDirectory();
       mkdirSync(nonGitDir, { recursive: true });
       try {
         expect(loadGitWorkspaceConfig(nonGitDir)).toBeUndefined();
@@ -547,7 +547,7 @@ describe("workspaceResolver", () => {
     });
 
     it("returns undefined when git repo has no pi-workspace.load configured", () => {
-      const testDir = join(tmpdir(), `git-empty-config-${Date.now()}`);
+      const testDir = createTestDirectory();
       const gitDir = join(testDir, ".git");
       mkdirSync(gitDir, { recursive: true });
       writeFileSync(join(gitDir, "config"), "[core]\n\tbare = false\n");
@@ -560,7 +560,7 @@ describe("workspaceResolver", () => {
     });
 
     it("loads workspace config from git config and resolves relative paths to repo root", () => {
-      const testDir = join(tmpdir(), `git-configured-repo-${Date.now()}`);
+      const testDir = createTestDirectory();
       const gitDir = join(testDir, ".git");
       mkdirSync(gitDir, { recursive: true });
 
@@ -584,7 +584,7 @@ describe("workspaceResolver", () => {
     });
 
     it("resolves config when cwd is a subdirectory of the git repository", () => {
-      const testDir = join(tmpdir(), `git-sub-repo-${Date.now()}`);
+      const testDir = createTestDirectory();
       const gitDir = join(testDir, ".git");
       const subDir = join(testDir, "src", "nested");
       mkdirSync(gitDir, { recursive: true });
@@ -607,7 +607,7 @@ describe("workspaceResolver", () => {
     });
 
     it("resolves config when cwd is a git worktree inheriting main repo config", () => {
-      const testDir = join(tmpdir(), `git-wt-test-${Date.now()}`);
+      const testDir = createTestDirectory();
       const mainRepo = join(testDir, "main-repo");
       const mainGitDir = join(mainRepo, ".git");
       const worktreeDir = join(testDir, "worktree-1");

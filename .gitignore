@@ -8,3 +8,5 @@ progress.md
 *.tgz
 *.sqlite-wal
 *.sqlite-shm
+.state/
+.workspaces/
