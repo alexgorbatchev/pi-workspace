@@ -157,9 +157,14 @@ test("reads quoted comment characters and prioritizes config entries in fallback
   ]);
 });
 
-test("returns no config path for malformed Git markers and non-repositories", () => {
+test("handles missing config and searches past malformed Git markers within an owned repository", () => {
   const root = createTestDirectory();
+  mkdirSync(join(root, ".git"));
+  const child = join(root, "child");
+  mkdirSync(child);
+  writeFileSync(join(child, ".git"), "not a gitdir marker");
   expect(resolveGitConfigPath(root)).toBeUndefined();
-  writeFileSync(join(root, ".git"), "not a gitdir marker");
-  expect(resolveGitConfigPath(root)).toBeUndefined();
+  expect(resolveGitConfigPath(child)).toBeUndefined();
+  writeFileSync(join(root, ".git/config"), "[core]\n\tbare = false\n");
+  expect(resolveGitConfigPath(child)).toBe(join(root, ".git/config"));
 });
